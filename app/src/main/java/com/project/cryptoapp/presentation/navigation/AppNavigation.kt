@@ -180,6 +180,8 @@ fun AppNavigation(
                 SettingsScreen(
                     state = state,
                     onHistoryEnabledChange = viewModel::setHistoryEnabled,
+                    onDefaultEncodingChange = viewModel::setDefaultEncoding,
+                    onClearHistory = viewModel::clearHistory,
                 )
             }
         }

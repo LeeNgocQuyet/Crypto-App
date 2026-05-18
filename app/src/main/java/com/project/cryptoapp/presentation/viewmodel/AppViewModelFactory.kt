@@ -47,7 +47,7 @@ class AppViewModelFactory(
                 )
 
             modelClass.isAssignableFrom(SettingsViewModel::class.java) ->
-                SettingsViewModel()
+                SettingsViewModel(appContainer.clearHistoryUseCase)
 
             else -> throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
         } as T

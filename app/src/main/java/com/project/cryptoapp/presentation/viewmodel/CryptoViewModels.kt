@@ -269,11 +269,34 @@ class HistoryViewModel(
     }
 }
 
-class SettingsViewModel : ViewModel() {
+class SettingsViewModel(
+    private val clearHistoryUseCase: ClearHistoryUseCase,
+) : ViewModel() {
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
     fun setHistoryEnabled(enabled: Boolean) {
         _uiState.update { it.copy(enableHistory = enabled, successMessage = "Settings updated") }
+    }
+
+    fun setDefaultEncoding(encoding: String) {
+        _uiState.update { it.copy(defaultEncoding = encoding, successMessage = "Default encoding set to $encoding") }
+    }
+
+    fun clearHistory() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
+            runCatching { clearHistoryUseCase() }
+                .onSuccess {
+                    _uiState.update {
+                        it.copy(isLoading = false, successMessage = "History cleared")
+                    }
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(isLoading = false, errorMessage = error.message ?: "Unable to clear history")
+                    }
+                }
+        }
     }
 }
