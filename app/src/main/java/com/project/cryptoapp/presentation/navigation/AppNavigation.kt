@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -50,6 +51,12 @@ fun AppNavigation(
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
     val currentRoute = currentDestination?.route
+    val canNavigateBack = currentRoute in setOf(
+        AppRoute.Encrypt.route,
+        AppRoute.Decrypt.route,
+        AppRoute.Sign.route,
+        AppRoute.Verify.route,
+    )
     val selectedBottomRoute = when (currentRoute) {
         AppRoute.Encrypt.route,
         AppRoute.Decrypt.route,
@@ -64,19 +71,20 @@ fun AppNavigation(
         topBar = {
             CenterAlignedTopAppBar(
                 title = { Text(routeTitle(currentRoute)) },
+                navigationIcon = {
+                    if (canNavigateBack) {
+                        IconButton(onClick = { navController.popBackStack() }) {
+                            Text("<")
+                        }
+                    }
+                },
             )
         },
         bottomBar = {
             BottomNavigationBar(
                 currentRoute = selectedBottomRoute,
                 onNavigate = { route ->
-                    navController.navigate(route.route) {
-                        popUpTo(navController.graph.findStartDestination().id) {
-                            saveState = true
-                        }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
+                    navController.navigateToBottomRoute(route)
                 },
             )
         },
@@ -91,7 +99,13 @@ fun AppNavigation(
                 .background(MaterialTheme.colorScheme.background),
         ) {
             composable(AppRoute.Home.route) {
-                HomeScreen(onNavigate = { navController.navigate(it.route) })
+                HomeScreen(onNavigate = { route ->
+                    if (route in AppRoute.bottomRoutes) {
+                        navController.navigateToBottomRoute(route)
+                    } else {
+                        navController.navigate(route.route)
+                    }
+                })
             }
             composable(AppRoute.Keys.route) {
                 val viewModel: KeyGenerationViewModel = viewModel(factory = factory)
@@ -163,6 +177,16 @@ fun AppNavigation(
                 )
             }
         }
+    }
+}
+
+private fun androidx.navigation.NavHostController.navigateToBottomRoute(route: AppRoute) {
+    navigate(route.route) {
+        popUpTo(graph.findStartDestination().id) {
+            saveState = true
+        }
+        launchSingleTop = true
+        restoreState = true
     }
 }
 
