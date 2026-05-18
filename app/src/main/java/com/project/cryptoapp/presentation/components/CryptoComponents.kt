@@ -8,19 +8,28 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -29,6 +38,7 @@ import com.project.cryptoapp.presentation.navigation.AppRoute
 import com.project.cryptoapp.presentation.theme.CyberPrimary
 import com.project.cryptoapp.presentation.theme.CyberSurface
 import com.project.cryptoapp.presentation.theme.CyberSurfaceVariant
+import com.project.cryptoapp.presentation.theme.CyberTextSecondary
 import com.project.cryptoapp.util.toReadableDateTime
 
 @Composable
@@ -203,9 +213,30 @@ fun BottomNavigationBar(
             NavigationBarItem(
                 selected = currentRoute == route.route,
                 onClick = { onNavigate(route) },
-                icon = { Text(route.title.take(1)) },
+                icon = {
+                    Icon(
+                        imageVector = route.bottomNavIcon(),
+                        contentDescription = route.title,
+                    )
+                },
                 label = { Text(route.title) },
+                colors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = CyberPrimary,
+                    selectedTextColor = CyberPrimary,
+                    indicatorColor = CyberSurfaceVariant,
+                    unselectedIconColor = CyberTextSecondary,
+                    unselectedTextColor = CyberTextSecondary,
+                ),
             )
         }
     }
+}
+
+private fun AppRoute.bottomNavIcon(): ImageVector = when (this) {
+    AppRoute.Home -> Icons.Filled.Home
+    AppRoute.Keys -> Icons.Filled.VpnKey
+    AppRoute.Crypto -> Icons.Filled.Security
+    AppRoute.History -> Icons.Filled.History
+    AppRoute.Settings -> Icons.Filled.Settings
+    else -> Icons.Filled.Home
 }
