@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Security
@@ -27,7 +28,10 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -118,15 +122,58 @@ fun CryptoOutputCard(
     title: String,
     output: String,
     modifier: Modifier = Modifier,
+    showCopy: Boolean = true,
 ) {
     if (output.isBlank()) return
+    val clipboardManager = LocalClipboardManager.current
     CryptoCard(modifier = modifier) {
-        SectionHeader(title)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            SectionHeader(
+                text = title,
+                modifier = Modifier.weight(1f),
+            )
+            if (showCopy) {
+                TextButton(
+                    onClick = { clipboardManager.setText(AnnotatedString(output)) },
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.ContentCopy,
+                        contentDescription = "Copy $title",
+                        tint = CyberPrimary,
+                    )
+                    Text("Copy")
+                }
+            }
+        }
         Text(
             text = output,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurface,
         )
+    }
+}
+
+@Composable
+fun CopyTextButton(
+    text: String,
+    label: String = "Copy",
+    modifier: Modifier = Modifier,
+) {
+    val clipboardManager = LocalClipboardManager.current
+    TextButton(
+        onClick = { clipboardManager.setText(AnnotatedString(text)) },
+        modifier = modifier,
+        enabled = text.isNotBlank(),
+    ) {
+        Icon(
+            imageVector = Icons.Filled.ContentCopy,
+            contentDescription = label,
+            tint = CyberPrimary,
+        )
+        Text(label)
     }
 }
 

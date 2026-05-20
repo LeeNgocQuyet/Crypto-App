@@ -25,6 +25,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.project.cryptoapp.presentation.components.BottomNavigationBar
 import com.project.cryptoapp.presentation.screens.crypto.CryptoScreen
+import com.project.cryptoapp.presentation.screens.curve.CurveParametersScreen
 import com.project.cryptoapp.presentation.screens.decrypt.DecryptScreen
 import com.project.cryptoapp.presentation.screens.encrypt.EncryptScreen
 import com.project.cryptoapp.presentation.screens.history.HistoryScreen
@@ -59,6 +60,7 @@ fun AppNavigation(
         AppRoute.Decrypt.route,
         AppRoute.Sign.route,
         AppRoute.Verify.route,
+        AppRoute.CurveParameters.route,
     )
     val selectedBottomRoute = when (currentRoute) {
         AppRoute.Encrypt.route,
@@ -66,6 +68,7 @@ fun AppNavigation(
         AppRoute.Sign.route,
         AppRoute.Verify.route
         -> AppRoute.Crypto.route
+        AppRoute.CurveParameters.route -> AppRoute.Settings.route
         else -> currentRoute
     }
 
@@ -119,6 +122,10 @@ fun AppNavigation(
                 KeyGenerationScreen(
                     state = state,
                     onGenerateKeyPair = viewModel::generateKeyPair,
+                    onUsePublicKeyForEncrypt = { navController.navigate(AppRoute.Encrypt.route) },
+                    onUsePublicKeyForVerify = { navController.navigate(AppRoute.Verify.route) },
+                    onUsePrivateKeyForDecrypt = { navController.navigate(AppRoute.Decrypt.route) },
+                    onUsePrivateKeyForSign = { navController.navigate(AppRoute.Sign.route) },
                 )
             }
             composable(AppRoute.Crypto.route) {
@@ -131,6 +138,7 @@ fun AppNavigation(
                     state = state,
                     onPlaintextChange = viewModel::onPlaintextChange,
                     onPublicKeyChange = viewModel::onPublicKeyChange,
+                    onUseLatestPublicKey = viewModel::useLatestPublicKey,
                     onEncrypt = viewModel::encrypt,
                 )
             }
@@ -141,6 +149,8 @@ fun AppNavigation(
                     state = state,
                     onCipherTextChange = viewModel::onCipherTextChange,
                     onPrivateKeyChange = viewModel::onPrivateKeyChange,
+                    onUseLatestCipherText = viewModel::useLatestCipherText,
+                    onUseLatestPrivateKey = viewModel::useLatestPrivateKey,
                     onDecrypt = viewModel::decrypt,
                 )
             }
@@ -151,6 +161,7 @@ fun AppNavigation(
                     state = state,
                     onMessageChange = viewModel::onMessageChange,
                     onPrivateKeyChange = viewModel::onPrivateKeyChange,
+                    onUseLatestPrivateKey = viewModel::useLatestPrivateKey,
                     onSign = viewModel::sign,
                 )
             }
@@ -163,8 +174,13 @@ fun AppNavigation(
                     onPublicKeyChange = viewModel::onPublicKeyChange,
                     onSignatureRChange = viewModel::onSignatureRChange,
                     onSignatureSChange = viewModel::onSignatureSChange,
+                    onUseLatestPublicKey = viewModel::useLatestPublicKey,
+                    onUseLatestSignature = viewModel::useLatestSignature,
                     onVerify = viewModel::verify,
                 )
+            }
+            composable(AppRoute.CurveParameters.route) {
+                CurveParametersScreen()
             }
             composable(AppRoute.History.route) {
                 val viewModel: HistoryViewModel = viewModel(factory = factory)
@@ -172,6 +188,7 @@ fun AppNavigation(
                 HistoryScreen(
                     state = state,
                     onClearHistory = viewModel::clearHistory,
+                    onDeleteHistoryItem = viewModel::deleteHistoryById,
                 )
             }
             composable(AppRoute.Settings.route) {
@@ -182,6 +199,8 @@ fun AppNavigation(
                     onHistoryEnabledChange = viewModel::setHistoryEnabled,
                     onDefaultEncodingChange = viewModel::setDefaultEncoding,
                     onClearHistory = viewModel::clearHistory,
+                    onResetAppData = viewModel::resetAppData,
+                    onOpenCurveParameters = { navController.navigate(AppRoute.CurveParameters.route) },
                 )
             }
         }
@@ -206,6 +225,7 @@ private fun routeTitle(route: String?): String = when (route) {
     AppRoute.Decrypt.route -> AppRoute.Decrypt.title
     AppRoute.Sign.route -> AppRoute.Sign.title
     AppRoute.Verify.route -> AppRoute.Verify.title
+    AppRoute.CurveParameters.route -> "Curve Parameters"
     AppRoute.History.route -> AppRoute.History.title
     AppRoute.Settings.route -> AppRoute.Settings.title
     else -> "ECC-512 Crypto"
