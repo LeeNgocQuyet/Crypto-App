@@ -56,7 +56,6 @@ data class HistoryUiState(
 )
 
 data class SettingsUiState(
-    val useMockCrypto: Boolean = true,
     val enableHistory: Boolean = true,
     val defaultEncoding: String = "Text",
     val isLoading: Boolean = false,
