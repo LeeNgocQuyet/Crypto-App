@@ -19,6 +19,7 @@ fun SignScreen(
     state: SignUiState,
     onMessageChange: (String) -> Unit,
     onPrivateKeyChange: (String) -> Unit,
+    onUseLatestPrivateKey: () -> Unit,
     onSign: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -30,6 +31,7 @@ fun SignScreen(
     ) {
         CryptoTextField(state.message, onMessageChange, "Message", minLines = 4)
         CryptoTextField(state.privateKey, onPrivateKeyChange, "Private key", minLines = 2)
+        CryptoButton("Use Latest Private Key", onClick = onUseLatestPrivateKey)
         CryptoButton("Sign Message", onClick = onSign, isLoading = state.isLoading)
         StatusMessage(state.errorMessage, state.successMessage)
         CryptoOutputCard("Digital Signature", state.signature)

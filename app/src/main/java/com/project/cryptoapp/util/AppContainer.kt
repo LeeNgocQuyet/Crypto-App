@@ -9,6 +9,7 @@ import com.project.cryptoapp.domain.crypto.ECCryptoService
 import com.project.cryptoapp.domain.repository.CryptoHistoryRepository
 import com.project.cryptoapp.domain.usecase.ClearHistoryUseCase
 import com.project.cryptoapp.domain.usecase.DecryptMessageUseCase
+import com.project.cryptoapp.domain.usecase.DeleteHistoryByIdUseCase
 import com.project.cryptoapp.domain.usecase.EncryptMessageUseCase
 import com.project.cryptoapp.domain.usecase.GenerateKeyPairUseCase
 import com.project.cryptoapp.domain.usecase.GetHistoryUseCase
@@ -24,6 +25,8 @@ class AppContainer(context: Context) {
     ).build()
 
     val cryptoService: ECCryptoService = MockECCryptoService()
+    val cryptoSessionStore = CryptoSessionStore()
+    val appSettingsStore = AppSettingsStore()
 
     val historyRepository: CryptoHistoryRepository =
         CryptoHistoryRepositoryImpl(database.cryptoHistoryDao())
@@ -35,5 +38,6 @@ class AppContainer(context: Context) {
     val verifySignatureUseCase = VerifySignatureUseCase(cryptoService)
     val getHistoryUseCase = GetHistoryUseCase(historyRepository)
     val saveHistoryUseCase = SaveHistoryUseCase(historyRepository)
+    val deleteHistoryByIdUseCase = DeleteHistoryByIdUseCase(historyRepository)
     val clearHistoryUseCase = ClearHistoryUseCase(historyRepository)
 }

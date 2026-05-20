@@ -3,8 +3,12 @@ package com.project.cryptoapp.presentation.navigation
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -21,6 +25,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.project.cryptoapp.presentation.components.BottomNavigationBar
 import com.project.cryptoapp.presentation.screens.crypto.CryptoScreen
+import com.project.cryptoapp.presentation.screens.curve.CurveParametersScreen
 import com.project.cryptoapp.presentation.screens.decrypt.DecryptScreen
 import com.project.cryptoapp.presentation.screens.encrypt.EncryptScreen
 import com.project.cryptoapp.presentation.screens.history.HistoryScreen
@@ -50,12 +55,20 @@ fun AppNavigation(
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
     val currentRoute = currentDestination?.route
+    val canNavigateBack = currentRoute in setOf(
+        AppRoute.Encrypt.route,
+        AppRoute.Decrypt.route,
+        AppRoute.Sign.route,
+        AppRoute.Verify.route,
+        AppRoute.CurveParameters.route,
+    )
     val selectedBottomRoute = when (currentRoute) {
         AppRoute.Encrypt.route,
         AppRoute.Decrypt.route,
         AppRoute.Sign.route,
         AppRoute.Verify.route
         -> AppRoute.Crypto.route
+        AppRoute.CurveParameters.route -> AppRoute.Settings.route
         else -> currentRoute
     }
 
@@ -64,19 +77,23 @@ fun AppNavigation(
         topBar = {
             CenterAlignedTopAppBar(
                 title = { Text(routeTitle(currentRoute)) },
+                navigationIcon = {
+                    if (canNavigateBack) {
+                        IconButton(onClick = { navController.popBackStack() }) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                            )
+                        }
+                    }
+                },
             )
         },
         bottomBar = {
             BottomNavigationBar(
                 currentRoute = selectedBottomRoute,
                 onNavigate = { route ->
-                    navController.navigate(route.route) {
-                        popUpTo(navController.graph.findStartDestination().id) {
-                            saveState = true
-                        }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
+                    navController.navigateToBottomRoute(route)
                 },
             )
         },
@@ -91,7 +108,13 @@ fun AppNavigation(
                 .background(MaterialTheme.colorScheme.background),
         ) {
             composable(AppRoute.Home.route) {
-                HomeScreen(onNavigate = { navController.navigate(it.route) })
+                HomeScreen(onNavigate = { route ->
+                    if (route in AppRoute.bottomRoutes) {
+                        navController.navigateToBottomRoute(route)
+                    } else {
+                        navController.navigate(route.route)
+                    }
+                })
             }
             composable(AppRoute.Keys.route) {
                 val viewModel: KeyGenerationViewModel = viewModel(factory = factory)
@@ -99,6 +122,10 @@ fun AppNavigation(
                 KeyGenerationScreen(
                     state = state,
                     onGenerateKeyPair = viewModel::generateKeyPair,
+                    onUsePublicKeyForEncrypt = { navController.navigate(AppRoute.Encrypt.route) },
+                    onUsePublicKeyForVerify = { navController.navigate(AppRoute.Verify.route) },
+                    onUsePrivateKeyForDecrypt = { navController.navigate(AppRoute.Decrypt.route) },
+                    onUsePrivateKeyForSign = { navController.navigate(AppRoute.Sign.route) },
                 )
             }
             composable(AppRoute.Crypto.route) {
@@ -111,6 +138,7 @@ fun AppNavigation(
                     state = state,
                     onPlaintextChange = viewModel::onPlaintextChange,
                     onPublicKeyChange = viewModel::onPublicKeyChange,
+                    onUseLatestPublicKey = viewModel::useLatestPublicKey,
                     onEncrypt = viewModel::encrypt,
                 )
             }
@@ -121,6 +149,8 @@ fun AppNavigation(
                     state = state,
                     onCipherTextChange = viewModel::onCipherTextChange,
                     onPrivateKeyChange = viewModel::onPrivateKeyChange,
+                    onUseLatestCipherText = viewModel::useLatestCipherText,
+                    onUseLatestPrivateKey = viewModel::useLatestPrivateKey,
                     onDecrypt = viewModel::decrypt,
                 )
             }
@@ -131,6 +161,7 @@ fun AppNavigation(
                     state = state,
                     onMessageChange = viewModel::onMessageChange,
                     onPrivateKeyChange = viewModel::onPrivateKeyChange,
+                    onUseLatestPrivateKey = viewModel::useLatestPrivateKey,
                     onSign = viewModel::sign,
                 )
             }
@@ -143,8 +174,13 @@ fun AppNavigation(
                     onPublicKeyChange = viewModel::onPublicKeyChange,
                     onSignatureRChange = viewModel::onSignatureRChange,
                     onSignatureSChange = viewModel::onSignatureSChange,
+                    onUseLatestPublicKey = viewModel::useLatestPublicKey,
+                    onUseLatestSignature = viewModel::useLatestSignature,
                     onVerify = viewModel::verify,
                 )
+            }
+            composable(AppRoute.CurveParameters.route) {
+                CurveParametersScreen()
             }
             composable(AppRoute.History.route) {
                 val viewModel: HistoryViewModel = viewModel(factory = factory)
@@ -152,6 +188,7 @@ fun AppNavigation(
                 HistoryScreen(
                     state = state,
                     onClearHistory = viewModel::clearHistory,
+                    onDeleteHistoryItem = viewModel::deleteHistoryById,
                 )
             }
             composable(AppRoute.Settings.route) {
@@ -160,9 +197,23 @@ fun AppNavigation(
                 SettingsScreen(
                     state = state,
                     onHistoryEnabledChange = viewModel::setHistoryEnabled,
+                    onDefaultEncodingChange = viewModel::setDefaultEncoding,
+                    onClearHistory = viewModel::clearHistory,
+                    onResetAppData = viewModel::resetAppData,
+                    onOpenCurveParameters = { navController.navigate(AppRoute.CurveParameters.route) },
                 )
             }
         }
+    }
+}
+
+private fun androidx.navigation.NavHostController.navigateToBottomRoute(route: AppRoute) {
+    navigate(route.route) {
+        popUpTo(graph.findStartDestination().id) {
+            saveState = true
+        }
+        launchSingleTop = true
+        restoreState = true
     }
 }
 
@@ -174,6 +225,7 @@ private fun routeTitle(route: String?): String = when (route) {
     AppRoute.Decrypt.route -> AppRoute.Decrypt.title
     AppRoute.Sign.route -> AppRoute.Sign.title
     AppRoute.Verify.route -> AppRoute.Verify.title
+    AppRoute.CurveParameters.route -> "Curve Parameters"
     AppRoute.History.route -> AppRoute.History.title
     AppRoute.Settings.route -> AppRoute.Settings.title
     else -> "ECC-512 Crypto"

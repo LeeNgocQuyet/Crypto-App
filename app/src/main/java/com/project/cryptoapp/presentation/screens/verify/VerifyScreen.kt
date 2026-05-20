@@ -21,6 +21,8 @@ fun VerifyScreen(
     onPublicKeyChange: (String) -> Unit,
     onSignatureRChange: (String) -> Unit,
     onSignatureSChange: (String) -> Unit,
+    onUseLatestPublicKey: () -> Unit,
+    onUseLatestSignature: () -> Unit,
     onVerify: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -32,8 +34,10 @@ fun VerifyScreen(
     ) {
         CryptoTextField(state.message, onMessageChange, "Message", minLines = 3)
         CryptoTextField(state.publicKey, onPublicKeyChange, "Public key Q(x, y)", minLines = 3)
+        CryptoButton("Use Latest Public Key", onClick = onUseLatestPublicKey)
         CryptoTextField(state.signatureR, onSignatureRChange, "Signature r")
         CryptoTextField(state.signatureS, onSignatureSChange, "Signature s")
+        CryptoButton("Use Latest Signature", onClick = onUseLatestSignature)
         CryptoButton("Verify Signature", onClick = onVerify, isLoading = state.isLoading)
         StatusMessage(state.errorMessage, state.successMessage)
         CryptoOutputCard(

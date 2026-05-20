@@ -11,6 +11,7 @@ sealed class AppRoute(
     data object Decrypt : AppRoute("decrypt", "Decrypt")
     data object Sign : AppRoute("sign", "Sign")
     data object Verify : AppRoute("verify", "Verify")
+    data object CurveParameters : AppRoute("curve_parameters", "Curve")
     data object History : AppRoute("history", "History")
     data object Settings : AppRoute("settings", "Settings")
 
