@@ -13,9 +13,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
@@ -24,7 +26,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -48,8 +55,13 @@ fun SettingsScreen(
     onHistoryEnabledChange: (Boolean) -> Unit,
     onDefaultEncodingChange: (String) -> Unit,
     onClearHistory: () -> Unit,
+    onResetAppData: () -> Unit,
+    onOpenCurveParameters: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var showClearDialog by remember { mutableStateOf(false) }
+    var showResetDialog by remember { mutableStateOf(false) }
+
     Column(
         modifier = modifier
             .padding(16.dp)
@@ -61,7 +73,9 @@ fun SettingsScreen(
             description = if (state.useMockCrypto) "Mock ECC service enabled" else "Real ECC service enabled",
             icon = Icons.Filled.Security,
             accentColor = CyberPrimary,
-        )
+        ) {
+            CryptoButton("View Curve Parameters", onClick = onOpenCurveParameters)
+        }
 
         SettingsCard(
             title = "Default Encoding",
@@ -116,7 +130,20 @@ fun SettingsScreen(
         ) {
             CryptoButton(
                 text = "Clear History",
-                onClick = onClearHistory,
+                onClick = { showClearDialog = true },
+                isLoading = state.isLoading,
+            )
+        }
+
+        SettingsCard(
+            title = "Reset App Data",
+            description = "Clear history and restore default local settings.",
+            icon = Icons.Filled.RestartAlt,
+            accentColor = Color(0xFFFF6B9A),
+        ) {
+            CryptoButton(
+                text = "Reset App Data",
+                onClick = { showResetDialog = true },
                 isLoading = state.isLoading,
             )
         }
@@ -137,6 +164,54 @@ fun SettingsScreen(
 
         StatusMessage(state.errorMessage, state.successMessage)
     }
+
+    if (showClearDialog) {
+        ConfirmationDialog(
+            title = "Clear history?",
+            text = "This removes all saved operation history from Room.",
+            onConfirm = {
+                showClearDialog = false
+                onClearHistory()
+            },
+            onDismiss = { showClearDialog = false },
+        )
+    }
+
+    if (showResetDialog) {
+        ConfirmationDialog(
+            title = "Reset app data?",
+            text = "This clears history and restores local settings to defaults.",
+            onConfirm = {
+                showResetDialog = false
+                onResetAppData()
+            },
+            onDismiss = { showResetDialog = false },
+        )
+    }
+}
+
+@Composable
+private fun ConfirmationDialog(
+    title: String,
+    text: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { Text(text) },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text("Confirm")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+    )
 }
 
 @Composable

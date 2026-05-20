@@ -1,6 +1,7 @@
 package com.project.cryptoapp.presentation.screens.history
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -12,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -34,6 +36,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.project.cryptoapp.domain.model.CryptoHistory
 import com.project.cryptoapp.domain.model.OperationType
+import com.project.cryptoapp.presentation.components.CopyTextButton
 import com.project.cryptoapp.presentation.components.CryptoButton
 import com.project.cryptoapp.presentation.components.CryptoCard
 import com.project.cryptoapp.presentation.components.StatusMessage
@@ -45,18 +48,25 @@ import com.project.cryptoapp.presentation.theme.CyberTertiary
 import com.project.cryptoapp.presentation.theme.CyberTextSecondary
 import com.project.cryptoapp.presentation.viewmodel.HistoryUiState
 import com.project.cryptoapp.util.toReadableDateTime
+import com.project.cryptoapp.util.toJsonExport
+import com.project.cryptoapp.util.toPlainTextExport
 
 @Composable
 fun HistoryScreen(
     state: HistoryUiState,
     onClearHistory: () -> Unit,
+    onDeleteHistoryItem: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var selectedFilter by remember { mutableStateOf(HistoryFilter.All) }
+    var selectedStatusFilter by remember { mutableStateOf(StatusFilter.All) }
+    var expandedItemId by remember { mutableStateOf<Long?>(null) }
     val filteredHistory = remember(state.history, selectedFilter) {
         state.history.filter { item ->
             selectedFilter.operationType == null || item.operationType == selectedFilter.operationType
         }
+    }.filter { item ->
+        selectedStatusFilter.status == null || item.status.name == selectedStatusFilter.status
     }
 
     Column(
@@ -64,6 +74,7 @@ fun HistoryScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         ClearHistoryCard(
+            history = state.history,
             enabled = state.history.isNotEmpty(),
             onClearHistory = onClearHistory,
         )
@@ -71,6 +82,10 @@ fun HistoryScreen(
         HistoryFilterChips(
             selectedFilter = selectedFilter,
             onFilterSelected = { selectedFilter = it },
+        )
+        StatusFilterChips(
+            selectedFilter = selectedStatusFilter,
+            onFilterSelected = { selectedStatusFilter = it },
         )
         when {
             state.isLoading -> CircularProgressIndicator(color = CyberPrimary)
@@ -83,7 +98,14 @@ fun HistoryScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 items(filteredHistory, key = { it.id }) { item ->
-                    CompactHistoryItem(item = item)
+                    CompactHistoryItem(
+                        item = item,
+                        isExpanded = expandedItemId == item.id,
+                        onToggleExpanded = {
+                            expandedItemId = if (expandedItemId == item.id) null else item.id
+                        },
+                        onDelete = { onDeleteHistoryItem(item.id) },
+                    )
                 }
             }
         }
@@ -92,6 +114,7 @@ fun HistoryScreen(
 
 @Composable
 private fun ClearHistoryCard(
+    history: List<CryptoHistory>,
     enabled: Boolean,
     onClearHistory: () -> Unit,
 ) {
@@ -120,6 +143,18 @@ private fun ClearHistoryCard(
             onClick = onClearHistory,
             enabled = enabled,
         )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            CopyTextButton(
+                text = history.toPlainTextExport(),
+                label = "Export Text",
+                modifier = Modifier.weight(1f),
+            )
+            CopyTextButton(
+                text = history.toJsonExport(),
+                label = "Export JSON",
+                modifier = Modifier.weight(1f),
+            )
+        }
     }
 }
 
@@ -156,14 +191,51 @@ private fun HistoryFilterChips(
 }
 
 @Composable
+private fun StatusFilterChips(
+    selectedFilter: StatusFilter,
+    onFilterSelected: (StatusFilter) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        StatusFilter.entries.forEach { filter ->
+            FilterChip(
+                selected = selectedFilter == filter,
+                onClick = { onFilterSelected(filter) },
+                label = { Text(filter.label) },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = CyberSurfaceVariant,
+                    selectedLabelColor = CyberPrimary,
+                    labelColor = CyberTextSecondary,
+                ),
+                border = FilterChipDefaults.filterChipBorder(
+                    enabled = true,
+                    selected = selectedFilter == filter,
+                    borderColor = CyberSurfaceVariant,
+                    selectedBorderColor = CyberPrimary,
+                ),
+            )
+        }
+    }
+}
+
+@Composable
 private fun CompactHistoryItem(
     item: CryptoHistory,
+    isExpanded: Boolean,
+    onToggleExpanded: () -> Unit,
+    onDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val accentColor = item.operationType.accentColor()
 
     Card(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onToggleExpanded),
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = CyberSurface),
         border = BorderStroke(1.dp, accentColor.copy(alpha = 0.65f)),
@@ -201,6 +273,48 @@ private fun CompactHistoryItem(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface,
             )
+            if (isExpanded) {
+                Text(
+                    text = "Input",
+                    color = accentColor,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = item.inputText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    text = "Full Output",
+                    color = accentColor,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = item.outputText,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CopyTextButton(
+                        text = item.outputText,
+                        label = "Copy Output",
+                        modifier = Modifier.weight(1f),
+                    )
+                    CryptoButton(
+                        text = "Delete",
+                        onClick = onDelete,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            } else {
+                Text(
+                    text = "Tap for details",
+                    color = CyberTextSecondary,
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
         }
     }
 }
@@ -239,6 +353,15 @@ private enum class HistoryFilter(
     Decrypt("Decrypt", OperationType.DECRYPT),
     Sign("Sign", OperationType.SIGN),
     Verify("Verify", OperationType.VERIFY),
+}
+
+private enum class StatusFilter(
+    val label: String,
+    val status: String?,
+) {
+    All("All Status", null),
+    Success("Success", "SUCCESS"),
+    Failed("Failed", "FAILED"),
 }
 
 private fun OperationType.displayName(): String = when (this) {

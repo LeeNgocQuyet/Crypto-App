@@ -133,7 +133,7 @@ private fun HeroCard(modifier: Modifier = Modifier) {
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(
-                text = "ECC over Fp - 512-bit",
+                text = "ECC over Fp — 512-bit",
                 style = MaterialTheme.typography.headlineSmall,
                 color = CyberPrimary,
                 fontWeight = FontWeight.Bold,
