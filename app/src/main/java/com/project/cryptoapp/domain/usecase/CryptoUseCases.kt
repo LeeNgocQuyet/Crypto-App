@@ -57,3 +57,9 @@ class ClearHistoryUseCase(
 ) {
     suspend operator fun invoke() = repository.clearHistory()
 }
+
+class DeleteHistoryByIdUseCase(
+    private val repository: CryptoHistoryRepository,
+) {
+    suspend operator fun invoke(id: Long) = repository.deleteHistoryById(id)
+}

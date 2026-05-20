@@ -19,6 +19,7 @@ fun EncryptScreen(
     state: EncryptUiState,
     onPlaintextChange: (String) -> Unit,
     onPublicKeyChange: (String) -> Unit,
+    onUseLatestPublicKey: () -> Unit,
     onEncrypt: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -30,6 +31,7 @@ fun EncryptScreen(
     ) {
         CryptoTextField(state.plaintext, onPlaintextChange, "Plaintext", minLines = 4)
         CryptoTextField(state.publicKey, onPublicKeyChange, "Public key Q(x, y)", minLines = 3)
+        CryptoButton("Use Latest Public Key", onClick = onUseLatestPublicKey)
         CryptoButton("Encrypt Message", onClick = onEncrypt, isLoading = state.isLoading)
         StatusMessage(state.errorMessage, state.successMessage)
         CryptoOutputCard("Ciphertext", state.cipherText)

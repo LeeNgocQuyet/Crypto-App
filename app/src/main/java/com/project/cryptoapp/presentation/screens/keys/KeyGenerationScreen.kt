@@ -2,6 +2,7 @@ package com.project.cryptoapp.presentation.screens.keys
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -17,6 +18,10 @@ import com.project.cryptoapp.presentation.viewmodel.KeyGenerationUiState
 fun KeyGenerationScreen(
     state: KeyGenerationUiState,
     onGenerateKeyPair: () -> Unit,
+    onUsePublicKeyForEncrypt: () -> Unit,
+    onUsePublicKeyForVerify: () -> Unit,
+    onUsePrivateKeyForDecrypt: () -> Unit,
+    onUsePrivateKeyForSign: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -33,5 +38,33 @@ fun KeyGenerationScreen(
         StatusMessage(state.errorMessage, state.successMessage)
         CryptoOutputCard("Private Key", state.privateKey)
         CryptoOutputCard("Public Key", state.publicKey)
+        if (state.privateKey.isNotBlank() || state.publicKey.isNotBlank()) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    CryptoButton(
+                        text = "Use Public Key: Encrypt",
+                        onClick = onUsePublicKeyForEncrypt,
+                        modifier = Modifier.weight(1f),
+                    )
+                    CryptoButton(
+                        text = "Use Public Key: Verify",
+                        onClick = onUsePublicKeyForVerify,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    CryptoButton(
+                        text = "Use Private Key: Decrypt",
+                        onClick = onUsePrivateKeyForDecrypt,
+                        modifier = Modifier.weight(1f),
+                    )
+                    CryptoButton(
+                        text = "Use Private Key: Sign",
+                        onClick = onUsePrivateKeyForSign,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
     }
 }

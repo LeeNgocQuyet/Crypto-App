@@ -19,6 +19,8 @@ fun DecryptScreen(
     state: DecryptUiState,
     onCipherTextChange: (String) -> Unit,
     onPrivateKeyChange: (String) -> Unit,
+    onUseLatestCipherText: () -> Unit,
+    onUseLatestPrivateKey: () -> Unit,
     onDecrypt: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -29,7 +31,9 @@ fun DecryptScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         CryptoTextField(state.cipherText, onCipherTextChange, "Ciphertext C1, C2", minLines = 5)
+        CryptoButton("Use Latest Ciphertext", onClick = onUseLatestCipherText)
         CryptoTextField(state.privateKey, onPrivateKeyChange, "Private key", minLines = 2)
+        CryptoButton("Use Latest Private Key", onClick = onUseLatestPrivateKey)
         CryptoButton("Decrypt Message", onClick = onDecrypt, isLoading = state.isLoading)
         StatusMessage(state.errorMessage, state.successMessage)
         CryptoOutputCard("Plaintext", state.plaintext)
