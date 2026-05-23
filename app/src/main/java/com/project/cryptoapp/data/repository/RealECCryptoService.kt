@@ -83,12 +83,17 @@ class RealECCryptoService(
 
     override suspend fun sign(message: String, privateKey: String): DigitalSignature {
         val secret = parsePrivateKey(privateKey)
-        val digest = hashToScalar(message)
+        val digestBytes = hashMessage(message)
+        val digest = hashToScalar(digestBytes)
+        val nonceGenerator = DeterministicNonceGenerator(secret, digestBytes)
 
         while (true) {
-            val k = randomScalar()
+            val k = nonceGenerator.next()
             val r = multiply(k, BASE_POINT).x.mod(N)
-            if (r == BigInteger.ZERO) continue
+            if (r == BigInteger.ZERO) {
+                nonceGenerator.reject()
+                continue
+            }
 
             val s = k.modInverse(N)
                 .multiply(digest.add(r.multiply(secret)))
@@ -96,6 +101,7 @@ class RealECCryptoService(
             if (s != BigInteger.ZERO) {
                 return DigitalSignature(r = r.toHex(), s = s.toHex())
             }
+            nonceGenerator.reject()
         }
     }
 
@@ -196,8 +202,13 @@ class RealECCryptoService(
     }
 
     private fun hashToScalar(message: String): BigInteger {
-        val digest = MessageDigest.getInstance("SHA-512")
-            .digest(decodeInputPayload(message))
+        return hashToScalar(hashMessage(message))
+    }
+
+    private fun hashMessage(message: String): ByteArray =
+        MessageDigest.getInstance("SHA-512").digest(decodeInputPayload(message))
+
+    private fun hashToScalar(digest: ByteArray): BigInteger {
         return BigInteger(1, digest).mod(N)
     }
 
@@ -330,6 +341,57 @@ class RealECCryptoService(
     private fun ByteArray.toHexString(): String =
         "0x" + joinToString("") { "%02X".format(it) }
 
+    private inner class DeterministicNonceGenerator(
+        private val privateKey: BigInteger,
+        messageDigest: ByteArray,
+    ) {
+        private var k = ByteArray(HMAC_OUTPUT_BYTES)
+        private var v = ByteArray(HMAC_OUTPUT_BYTES) { 0x01 }
+
+        init {
+            val seed = privateKey.toFixedBytes(SCALAR_BYTES) + bitsToOctets(messageDigest)
+            k = hmac(k, v + byteArrayOf(0x00) + seed)
+            v = hmac(k, v)
+            k = hmac(k, v + byteArrayOf(0x01) + seed)
+            v = hmac(k, v)
+        }
+
+        fun next(): BigInteger {
+            while (true) {
+                var t = ByteArray(0)
+                while (t.size < SCALAR_BYTES) {
+                    v = hmac(k, v)
+                    t += v
+                }
+                val candidate = bitsToInt(t)
+                if (isScalarInRange(candidate)) return candidate
+
+                k = hmac(k, v + byteArrayOf(0x00))
+                v = hmac(k, v)
+            }
+        }
+
+        fun reject() {
+            k = hmac(k, v + byteArrayOf(0x00))
+            v = hmac(k, v)
+        }
+
+        private fun bitsToOctets(bytes: ByteArray): ByteArray =
+            bitsToInt(bytes).mod(N).toFixedBytes(SCALAR_BYTES)
+
+        private fun bitsToInt(bytes: ByteArray): BigInteger {
+            val value = BigInteger(1, bytes)
+            val extraBits = bytes.size * Byte.SIZE_BITS - N.bitLength()
+            return if (extraBits > 0) value.shiftRight(extraBits) else value
+        }
+
+        private fun hmac(key: ByteArray, data: ByteArray): ByteArray {
+            val mac = Mac.getInstance(HMAC_SHA512)
+            mac.init(SecretKeySpec(key, HMAC_SHA512))
+            return mac.doFinal(data)
+        }
+    }
+
     private data class AeadResult(
         val cipherText: ByteArray,
         val tag: ByteArray,
@@ -362,6 +424,8 @@ class RealECCryptoService(
         const val AES_GCM_TRANSFORMATION = "AES/GCM/NoPadding"
         const val AES = "AES"
         const val FIELD_BYTES = 64
+        const val SCALAR_BYTES = 64
+        const val HMAC_OUTPUT_BYTES = 64
         const val AES_KEY_BYTES = 32
         const val SALT_BYTES = 32
         const val GCM_NONCE_BYTES = 12
