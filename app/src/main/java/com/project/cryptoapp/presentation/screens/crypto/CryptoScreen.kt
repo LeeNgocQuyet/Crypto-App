@@ -30,6 +30,7 @@ fun CryptoScreen(
             CryptoButton("Decrypt", onClick = { onNavigate(AppRoute.Decrypt) })
             CryptoButton("Sign", onClick = { onNavigate(AppRoute.Sign) })
             CryptoButton("Verify", onClick = { onNavigate(AppRoute.Verify) })
+            CryptoButton("File Encryption & Signing", onClick = { onNavigate(AppRoute.FileTools) })
         }
     }
 }

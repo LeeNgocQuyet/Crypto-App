@@ -1,5 +1,8 @@
 package com.project.cryptoapp.presentation.viewmodel
 
+import android.content.Context
+import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.project.cryptoapp.domain.model.CryptoHistory
@@ -17,6 +20,10 @@ import com.project.cryptoapp.domain.usecase.SignMessageUseCase
 import com.project.cryptoapp.domain.usecase.VerifySignatureUseCase
 import com.project.cryptoapp.util.AppSettingsStore
 import com.project.cryptoapp.util.CryptoSessionStore
+import com.project.cryptoapp.util.FileSignatureCodec
+import com.project.cryptoapp.util.FileSignaturePayload
+import com.project.cryptoapp.util.KeyPayloadCodec
+import com.project.cryptoapp.util.ProtectedKeyStore
 import com.project.cryptoapp.util.toDisplayString
 import com.project.cryptoapp.util.validateAad
 import com.project.cryptoapp.util.validateCipherText
@@ -30,14 +37,18 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.security.MessageDigest
 
 class KeyGenerationViewModel(
     private val generateKeyPairUseCase: GenerateKeyPairUseCase,
     private val saveHistoryUseCase: SaveHistoryUseCase,
     private val sessionStore: CryptoSessionStore,
     private val settingsStore: AppSettingsStore,
+    private val protectedKeyStore: ProtectedKeyStore,
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(KeyGenerationUiState())
+    private val _uiState = MutableStateFlow(
+        KeyGenerationUiState(hasProtectedKey = protectedKeyStore.hasKeyPair()),
+    )
     val uiState: StateFlow<KeyGenerationUiState> = _uiState.asStateFlow()
 
     fun generateKeyPair() {
@@ -50,15 +61,24 @@ class KeyGenerationViewModel(
                         privateKey = keyPair.privateKey,
                         publicKey = publicKey,
                     )
+                    protectedKeyStore.saveKeyPair(
+                        privateKey = keyPair.privateKey,
+                        publicKey = publicKey,
+                    )
                     _uiState.update {
                         it.copy(
                             privateKey = keyPair.privateKey,
                             publicKey = publicKey,
+                            hasProtectedKey = true,
                             isLoading = false,
-                            successMessage = "Key pair generated",
+                            successMessage = "Key pair generated and protected by Android Keystore",
                         )
                     }
-                    saveHistory(OperationType.KEY_GENERATION, "Generate ECC-512 key pair", publicKey)
+                    saveHistory(
+                        OperationType.KEY_GENERATION,
+                        "Generate BrainpoolP512r1 key pair",
+                        "Public key generated; private key protected by Android Keystore",
+                    )
                 }
                 .onFailure { error ->
                     _uiState.update {
@@ -66,6 +86,141 @@ class KeyGenerationViewModel(
                     }
                 }
         }
+    }
+
+    fun loadProtectedKeyPair() {
+        viewModelScope.launch {
+            runCatching { protectedKeyStore.loadKeyPair() }
+                .onSuccess { keyPair ->
+                    if (keyPair == null) {
+                        _uiState.update {
+                            it.copy(
+                                hasProtectedKey = false,
+                                errorMessage = "No protected key pair found",
+                                successMessage = null,
+                            )
+                        }
+                    } else {
+                        sessionStore.setKeyPair(keyPair.privateKey, keyPair.publicKey)
+                        _uiState.update {
+                            it.copy(
+                                privateKey = keyPair.privateKey,
+                                publicKey = keyPair.publicKey,
+                                hasProtectedKey = true,
+                                errorMessage = null,
+                                successMessage = "Protected key pair loaded",
+                            )
+                        }
+                    }
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(errorMessage = error.message ?: "Unable to load protected key pair")
+                    }
+                }
+        }
+    }
+
+    fun clearProtectedKeyPair() {
+        protectedKeyStore.clear()
+        _uiState.update {
+            it.copy(hasProtectedKey = false, successMessage = "Protected key pair cleared", errorMessage = null)
+        }
+    }
+
+    fun preparePublicKeyExport() {
+        val publicKey = _uiState.value.publicKey
+        val validationError = validatePublicKey(publicKey)
+        if (validationError != null) {
+            _uiState.update { it.copy(errorMessage = validationError) }
+            return
+        }
+        val payload = KeyPayloadCodec.encode(KeyPayloadCodec.publicKeyPayload(publicKey))
+        _uiState.update {
+            it.copy(
+                keyExportPayload = payload,
+                errorMessage = null,
+                successMessage = "Public key export prepared",
+            )
+        }
+    }
+
+    fun preparePrivateKeyBackup() {
+        val state = _uiState.value
+        val validationError = validatePrivateKey(state.privateKey) ?: validatePublicKey(state.publicKey)
+        if (validationError != null) {
+            _uiState.update { it.copy(errorMessage = validationError) }
+            return
+        }
+        val payload = KeyPayloadCodec.encode(
+            KeyPayloadCodec.privateKeyPayload(
+                privateKey = state.privateKey,
+                publicKey = state.publicKey,
+            ),
+        )
+        _uiState.update {
+            it.copy(
+                keyExportPayload = payload,
+                errorMessage = null,
+                successMessage = "Private key backup prepared; keep this file secret",
+            )
+        }
+    }
+
+    fun saveKeyExport(context: Context, uri: Uri) {
+        context.writeText(uri, _uiState.value.keyExportPayload)
+        _uiState.update { it.copy(successMessage = "Key JSON saved", errorMessage = null) }
+    }
+
+    fun importKeyPayload(context: Context, uri: Uri) {
+        viewModelScope.launch {
+            runCatching {
+                val payload = KeyPayloadCodec.decode(context.readText(uri))
+                require(payload.version == 1) { "Unsupported key payload version: ${payload.version}" }
+                require(payload.curve == "BrainpoolP512r1") { "Unsupported key curve: ${payload.curve}" }
+                val publicKey = with(KeyPayloadCodec) { payload.publicKey.toDisplayKey() }
+                validatePublicKey(publicKey)?.let { throw IllegalArgumentException(it) }
+                val privateKey = payload.privateKey.orEmpty()
+                if (privateKey.isNotBlank()) {
+                    validatePrivateKey(privateKey)?.let { throw IllegalArgumentException(it) }
+                    protectedKeyStore.saveKeyPair(privateKey, publicKey)
+                }
+                payload to publicKey
+            }
+                .onSuccess { (payload, publicKey) ->
+                    val privateKey = payload.privateKey.orEmpty()
+                    if (privateKey.isNotBlank()) {
+                        sessionStore.setKeyPair(privateKey, publicKey)
+                    } else {
+                        sessionStore.setKeyPair(sessionStore.state.value.privateKey, publicKey)
+                    }
+                    _uiState.update {
+                        it.copy(
+                            privateKey = privateKey.ifBlank { it.privateKey },
+                            publicKey = publicKey,
+                            hasProtectedKey = protectedKeyStore.hasKeyPair(),
+                            errorMessage = null,
+                            successMessage = if (privateKey.isBlank()) {
+                                "Public key imported"
+                            } else {
+                                "Private key imported and protected by Android Keystore"
+                            },
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    _uiState.update { it.copy(errorMessage = error.message ?: "Unable to import key JSON") }
+                }
+        }
+    }
+
+    private fun Context.readText(uri: Uri): String =
+        contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
+            ?: throw IllegalArgumentException("Unable to read key file")
+
+    private fun Context.writeText(uri: Uri, value: String) {
+        contentResolver.openOutputStream(uri)?.use { it.write(value.toByteArray(Charsets.UTF_8)) }
+            ?: throw IllegalArgumentException("Unable to write key file")
     }
 
     private suspend fun saveHistory(type: OperationType, input: String, output: String) {
@@ -138,7 +293,7 @@ class EncryptViewModel(
                     saveHistory(
                         OperationType.ENCRYPT,
                         "Hybrid encrypt (${state.plaintext.length} chars)",
-                        output,
+                        "Hybrid ciphertext generated (${output.length} chars)",
                         OperationStatus.SUCCESS,
                     )
                 }
@@ -224,7 +379,12 @@ class DecryptViewModel(
                     _uiState.update {
                         it.copy(plaintext = output, isLoading = false, successMessage = "Ciphertext decrypted")
                     }
-                    saveHistory(OperationType.DECRYPT, "Hybrid ciphertext JSON", output, OperationStatus.SUCCESS)
+                    saveHistory(
+                        OperationType.DECRYPT,
+                        "Hybrid ciphertext JSON",
+                        "Plaintext recovered (${output.length} chars)",
+                        OperationStatus.SUCCESS,
+                    )
                 }
                 .onFailure { error ->
                     val message = error.message ?: "Decryption failed"
@@ -288,12 +448,22 @@ class SignViewModel(
                     _uiState.update {
                         it.copy(signature = output, isLoading = false, successMessage = "Message signed")
                     }
-                    saveHistory(OperationType.SIGN, state.message, output, OperationStatus.SUCCESS)
+                    saveHistory(
+                        OperationType.SIGN,
+                        "Message signing (${state.message.length} chars)",
+                        "Deterministic ECDSA signature generated",
+                        OperationStatus.SUCCESS,
+                    )
                 }
                 .onFailure { error ->
                     val message = error.message ?: "Signing failed"
                     _uiState.update { it.copy(isLoading = false, errorMessage = message) }
-                    saveHistory(OperationType.SIGN, state.message, message, OperationStatus.FAILED)
+                    saveHistory(
+                        OperationType.SIGN,
+                        "Message signing (${state.message.length} chars)",
+                        message,
+                        OperationStatus.FAILED,
+                    )
                 }
         }
     }
@@ -380,12 +550,22 @@ class VerifyViewModel(
                             successMessage = output,
                         )
                     }
-                    saveHistory(OperationType.VERIFY, state.message, output, OperationStatus.SUCCESS)
+                    saveHistory(
+                        OperationType.VERIFY,
+                        "Signature verification (${state.message.length} chars)",
+                        output,
+                        OperationStatus.SUCCESS,
+                    )
                 }
                 .onFailure { error ->
                     val message = error.message ?: "Verification failed"
                     _uiState.update { it.copy(isLoading = false, errorMessage = message) }
-                    saveHistory(OperationType.VERIFY, state.message, message, OperationStatus.FAILED)
+                    saveHistory(
+                        OperationType.VERIFY,
+                        "Signature verification (${state.message.length} chars)",
+                        message,
+                        OperationStatus.FAILED,
+                    )
                 }
         }
     }
@@ -393,6 +573,261 @@ class VerifyViewModel(
     private suspend fun saveHistory(type: OperationType, input: String, output: String, status: OperationStatus) {
         if (!settingsStore.state.value.saveHistory) return
         saveHistoryUseCase(CryptoHistory(operationType = type, inputText = input, outputText = output, status = status, timestamp = System.currentTimeMillis()))
+    }
+}
+
+class FileToolsViewModel(
+    private val encryptMessageUseCase: EncryptMessageUseCase,
+    private val decryptMessageUseCase: DecryptMessageUseCase,
+    private val signMessageUseCase: SignMessageUseCase,
+    private val verifySignatureUseCase: VerifySignatureUseCase,
+    private val saveHistoryUseCase: SaveHistoryUseCase,
+    private val sessionStore: CryptoSessionStore,
+    private val settingsStore: AppSettingsStore,
+) : ViewModel() {
+    private val _uiState = MutableStateFlow(
+        FileToolsUiState(
+            publicKey = sessionStore.state.value.publicKey,
+            privateKey = sessionStore.state.value.privateKey,
+        ),
+    )
+    val uiState: StateFlow<FileToolsUiState> = _uiState.asStateFlow()
+
+    fun onPublicKeyChange(value: String) = _uiState.update { it.copy(publicKey = value) }
+    fun onPrivateKeyChange(value: String) = _uiState.update { it.copy(privateKey = value) }
+
+    fun useLatestPublicKey() {
+        val publicKey = sessionStore.state.value.publicKey
+        if (publicKey.isBlank()) {
+            _uiState.update { it.copy(errorMessage = "Generate or load a key pair first") }
+        } else {
+            _uiState.update { it.copy(publicKey = publicKey, errorMessage = null, successMessage = "Latest public key loaded") }
+        }
+    }
+
+    fun useLatestPrivateKey() {
+        val privateKey = sessionStore.state.value.privateKey
+        if (privateKey.isBlank()) {
+            _uiState.update { it.copy(errorMessage = "Generate or load a key pair first") }
+        } else {
+            _uiState.update { it.copy(privateKey = privateKey, errorMessage = null, successMessage = "Latest private key loaded") }
+        }
+    }
+
+    fun encryptFile(context: Context, uri: Uri) {
+        val publicKey = _uiState.value.publicKey
+        val validationError = validatePublicKey(publicKey)
+        if (validationError != null) {
+            _uiState.update { it.copy(errorMessage = validationError) }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
+            runCatching {
+                val bytes = context.readBytes(uri)
+                val name = context.displayName(uri)
+                encryptMessageUseCase(bytes.toHexPayload(), publicKey, "fileName=$name")
+                    .toDisplayString(pretty = true)
+            }
+                .onSuccess { payload ->
+                    _uiState.update {
+                        it.copy(
+                            encryptedFilePayload = payload,
+                            isLoading = false,
+                            successMessage = "File encrypted to hybrid JSON",
+                        )
+                    }
+                    saveHistory(OperationType.ENCRYPT, "File encryption", "Encrypted file payload generated", OperationStatus.SUCCESS)
+                }
+                .onFailure { error ->
+                    val message = error.message ?: "File encryption failed"
+                    _uiState.update { it.copy(isLoading = false, errorMessage = message) }
+                    saveHistory(OperationType.ENCRYPT, "File encryption", message, OperationStatus.FAILED)
+                }
+        }
+    }
+
+    fun decryptFile(context: Context, uri: Uri) {
+        val privateKey = _uiState.value.privateKey
+        val validationError = validatePrivateKey(privateKey)
+        if (validationError != null) {
+            _uiState.update { it.copy(errorMessage = validationError) }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
+            runCatching {
+                val payload = context.readText(uri)
+                decryptMessageUseCase(payload, privateKey).toPayloadBytes()
+            }
+                .onSuccess { bytes ->
+                    _uiState.update {
+                        it.copy(
+                            decryptedFileBytes = bytes,
+                            isLoading = false,
+                            successMessage = "File decrypted and ready to save",
+                        )
+                    }
+                    saveHistory(OperationType.DECRYPT, "File decryption", "Decrypted file bytes recovered", OperationStatus.SUCCESS)
+                }
+                .onFailure { error ->
+                    val message = error.message ?: "File decryption failed"
+                    _uiState.update { it.copy(isLoading = false, errorMessage = message) }
+                    saveHistory(OperationType.DECRYPT, "File decryption", message, OperationStatus.FAILED)
+                }
+        }
+    }
+
+    fun signFile(context: Context, uri: Uri) {
+        val privateKey = _uiState.value.privateKey
+        val validationError = validatePrivateKey(privateKey)
+        if (validationError != null) {
+            _uiState.update { it.copy(errorMessage = validationError) }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
+            runCatching {
+                val bytes = context.readBytes(uri)
+                val fileHash = bytes.sha512HexPayload()
+                val signature = signMessageUseCase(fileHash, privateKey)
+                FileSignatureCodec.encode(
+                    FileSignaturePayload(
+                        fileName = context.displayName(uri),
+                        sha512 = fileHash,
+                        signature = signature,
+                    ),
+                )
+            }
+                .onSuccess { signaturePayload ->
+                    _uiState.update {
+                        it.copy(
+                            fileSignaturePayload = signaturePayload,
+                            isLoading = false,
+                            successMessage = "File signature generated",
+                        )
+                    }
+                    saveHistory(OperationType.SIGN, "File signing", "File SHA-512 signature generated", OperationStatus.SUCCESS)
+                }
+                .onFailure { error ->
+                    val message = error.message ?: "File signing failed"
+                    _uiState.update { it.copy(isLoading = false, errorMessage = message) }
+                    saveHistory(OperationType.SIGN, "File signing", message, OperationStatus.FAILED)
+                }
+        }
+    }
+
+    fun verifyFileSignature(context: Context, fileUri: Uri, signatureUri: Uri) {
+        val publicKey = _uiState.value.publicKey
+        val validationError = validatePublicKey(publicKey)
+        if (validationError != null) {
+            _uiState.update { it.copy(errorMessage = validationError) }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
+            runCatching {
+                val fileHash = context.readBytes(fileUri).sha512HexPayload()
+                val signaturePayload = FileSignatureCodec.decode(context.readText(signatureUri))
+                val hashMatches = signaturePayload.sha512.equals(fileHash, ignoreCase = true)
+                val signatureValid = verifySignatureUseCase(fileHash, publicKey, signaturePayload.signature)
+                hashMatches && signatureValid
+            }
+                .onSuccess { isValid ->
+                    val output = if (isValid) "File signature is valid" else "File signature is invalid"
+                    _uiState.update {
+                        it.copy(
+                            verificationResult = output,
+                            isLoading = false,
+                            successMessage = output,
+                        )
+                    }
+                    saveHistory(OperationType.VERIFY, "File signature verification", output, OperationStatus.SUCCESS)
+                }
+                .onFailure { error ->
+                    val message = error.message ?: "File signature verification failed"
+                    _uiState.update { it.copy(isLoading = false, errorMessage = message) }
+                    saveHistory(OperationType.VERIFY, "File signature verification", message, OperationStatus.FAILED)
+                }
+        }
+    }
+
+    fun saveEncryptedPayload(context: Context, uri: Uri) {
+        context.writeText(uri, _uiState.value.encryptedFilePayload)
+        _uiState.update { it.copy(successMessage = "Encrypted file payload saved", errorMessage = null) }
+    }
+
+    fun saveDecryptedFile(context: Context, uri: Uri) {
+        val bytes = _uiState.value.decryptedFileBytes ?: return
+        context.writeBytes(uri, bytes)
+        _uiState.update { it.copy(successMessage = "Decrypted file saved", errorMessage = null) }
+    }
+
+    fun saveSignaturePayload(context: Context, uri: Uri) {
+        context.writeText(uri, _uiState.value.fileSignaturePayload)
+        _uiState.update { it.copy(successMessage = "Signature file saved", errorMessage = null) }
+    }
+
+    private suspend fun saveHistory(
+        type: OperationType,
+        input: String,
+        output: String,
+        status: OperationStatus,
+    ) {
+        if (!settingsStore.state.value.saveHistory) return
+        saveHistoryUseCase(
+            CryptoHistory(
+                operationType = type,
+                inputText = input,
+                outputText = output,
+                status = status,
+                timestamp = System.currentTimeMillis(),
+            ),
+        )
+    }
+
+    private fun Context.readBytes(uri: Uri): ByteArray =
+        contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            ?: throw IllegalArgumentException("Unable to read selected file")
+
+    private fun Context.readText(uri: Uri): String =
+        readBytes(uri).toString(Charsets.UTF_8)
+
+    private fun Context.writeBytes(uri: Uri, bytes: ByteArray) {
+        contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+            ?: throw IllegalArgumentException("Unable to write selected file")
+    }
+
+    private fun Context.writeText(uri: Uri, value: String) =
+        writeBytes(uri, value.toByteArray(Charsets.UTF_8))
+
+    private fun Context.displayName(uri: Uri): String {
+        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { cursor ->
+                val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (index >= 0 && cursor.moveToFirst()) return cursor.getString(index)
+            }
+        return uri.lastPathSegment ?: "selected-file"
+    }
+
+    private fun ByteArray.toHexPayload(): String =
+        "0x" + joinToString("") { "%02X".format(it) }
+
+    private fun ByteArray.sha512HexPayload(): String =
+        MessageDigest.getInstance("SHA-512").digest(this).toHexPayload()
+
+    private fun String.toPayloadBytes(): ByteArray {
+        val trimmed = trim()
+        val hex = trimmed.removePrefix("0x").removePrefix("0X")
+        return if (trimmed.startsWith("0x", ignoreCase = true) && hex.length % 2 == 0) {
+            hex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        } else {
+            toByteArray(Charsets.UTF_8)
+        }
     }
 }
 
