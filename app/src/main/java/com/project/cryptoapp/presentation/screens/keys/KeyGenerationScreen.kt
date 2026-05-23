@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.project.cryptoapp.presentation.components.CryptoButton
 import com.project.cryptoapp.presentation.components.CryptoOutputCard
+import com.project.cryptoapp.presentation.components.CryptoTextField
 import com.project.cryptoapp.presentation.components.StatusMessage
 import com.project.cryptoapp.presentation.viewmodel.KeyGenerationUiState
 
@@ -31,6 +32,10 @@ fun KeyGenerationScreen(
     onPreparePrivateKeyBackup: () -> Unit,
     onImportKeyPayload: (Uri) -> Unit,
     onSaveKeyExport: (Uri) -> Unit,
+    onIdentityLabelChange: (String) -> Unit,
+    onCreateIdentityProof: () -> Unit,
+    onVerifyIdentityProof: (Uri) -> Unit,
+    onSaveIdentityProof: (Uri) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val importKeyLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -38,6 +43,12 @@ fun KeyGenerationScreen(
     }
     val saveKeyLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         uri?.let(onSaveKeyExport)
+    }
+    val importIdentityProofLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(onVerifyIdentityProof)
+    }
+    val saveIdentityProofLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        uri?.let(onSaveIdentityProof)
     }
 
     Column(
@@ -92,6 +103,32 @@ fun KeyGenerationScreen(
         CryptoOutputCard("Private Key", state.privateKey)
         CryptoOutputCard("Public Key", state.publicKey)
         CryptoOutputCard("QR-ready Key JSON", state.keyExportPayload)
+        CryptoTextField(
+            value = state.identityLabel,
+            onValueChange = onIdentityLabelChange,
+            label = "Identity label",
+            supportingText = "Name, email, device name, or any label to bind to this public key.",
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            CryptoButton(
+                text = "Create Identity Proof",
+                onClick = onCreateIdentityProof,
+                modifier = Modifier.weight(1f),
+                enabled = state.privateKey.isNotBlank() && state.publicKey.isNotBlank(),
+            )
+            CryptoButton(
+                text = "Verify Proof JSON",
+                onClick = { importIdentityProofLauncher.launch(arrayOf("application/json", "text/*", "*/*")) },
+                modifier = Modifier.weight(1f),
+            )
+        }
+        CryptoButton(
+            text = "Save Identity Proof JSON",
+            onClick = { saveIdentityProofLauncher.launch("public-key-identity-proof.cryptoapp.json") },
+            enabled = state.identityProofPayload.isNotBlank(),
+        )
+        CryptoOutputCard("Public Key Authentication", state.publicKeyAuthResult, showCopy = false)
+        CryptoOutputCard("QR-ready Identity Proof JSON", state.identityProofPayload)
         if (state.privateKey.isNotBlank() || state.publicKey.isNotBlank()) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {

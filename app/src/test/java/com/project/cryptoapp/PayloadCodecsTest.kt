@@ -4,6 +4,8 @@ import com.project.cryptoapp.data.repository.RealECCryptoService
 import com.project.cryptoapp.util.FileSignatureCodec
 import com.project.cryptoapp.util.FileSignaturePayload
 import com.project.cryptoapp.util.KeyPayloadCodec
+import com.project.cryptoapp.util.PublicKeyIdentityCodec
+import com.project.cryptoapp.util.PublicKeyIdentityProof
 import com.project.cryptoapp.util.toDisplayString
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -46,5 +48,28 @@ class PayloadCodecsTest {
         assertEquals("document.bin", decoded.fileName)
         assertEquals(digest, decoded.sha512)
         assertEquals(signature, decoded.signature)
+    }
+
+    @Test
+    fun publicKeyIdentityProofRoundTripVerifiesSignature() = runBlocking {
+        val keyPair = service.generateKeyPair()
+        val publicKey = keyPair.publicKey.toDisplayString()
+        val keyPayload = KeyPayloadCodec.publicKeyPayload(publicKey)
+        val message = PublicKeyIdentityCodec.messageToSign("Alice Device", keyPayload.fingerprint)
+        val signature = service.sign(message, keyPair.privateKey)
+
+        val encoded = PublicKeyIdentityCodec.encode(
+            PublicKeyIdentityProof(
+                label = "Alice Device",
+                publicKey = keyPayload.publicKey,
+                fingerprint = keyPayload.fingerprint,
+                signature = signature,
+            ),
+        )
+        val decoded = PublicKeyIdentityCodec.decode(encoded)
+
+        assertEquals(keyPayload.fingerprint, decoded.fingerprint)
+        assertEquals("Alice Device", decoded.label)
+        assertEquals(true, service.verify(message, publicKey, decoded.signature))
     }
 }

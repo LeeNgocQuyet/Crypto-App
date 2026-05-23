@@ -24,6 +24,8 @@ import com.project.cryptoapp.util.FileSignatureCodec
 import com.project.cryptoapp.util.FileSignaturePayload
 import com.project.cryptoapp.util.KeyPayloadCodec
 import com.project.cryptoapp.util.ProtectedKeyStore
+import com.project.cryptoapp.util.PublicKeyIdentityCodec
+import com.project.cryptoapp.util.PublicKeyIdentityProof
 import com.project.cryptoapp.util.toDisplayString
 import com.project.cryptoapp.util.validateAad
 import com.project.cryptoapp.util.validateCipherText
@@ -41,6 +43,8 @@ import java.security.MessageDigest
 
 class KeyGenerationViewModel(
     private val generateKeyPairUseCase: GenerateKeyPairUseCase,
+    private val signMessageUseCase: SignMessageUseCase,
+    private val verifySignatureUseCase: VerifySignatureUseCase,
     private val saveHistoryUseCase: SaveHistoryUseCase,
     private val sessionStore: CryptoSessionStore,
     private val settingsStore: AppSettingsStore,
@@ -50,6 +54,8 @@ class KeyGenerationViewModel(
         KeyGenerationUiState(hasProtectedKey = protectedKeyStore.hasKeyPair()),
     )
     val uiState: StateFlow<KeyGenerationUiState> = _uiState.asStateFlow()
+
+    fun onIdentityLabelChange(value: String) = _uiState.update { it.copy(identityLabel = value) }
 
     fun generateKeyPair() {
         viewModelScope.launch {
@@ -212,6 +218,90 @@ class KeyGenerationViewModel(
                     _uiState.update { it.copy(errorMessage = error.message ?: "Unable to import key JSON") }
                 }
         }
+    }
+
+    fun createPublicKeyIdentityProof() {
+        val state = _uiState.value
+        val label = state.identityLabel.ifBlank { "Unnamed key owner" }
+        val validationError = validatePrivateKey(state.privateKey) ?: validatePublicKey(state.publicKey)
+        if (validationError != null) {
+            _uiState.update { it.copy(errorMessage = validationError) }
+            return
+        }
+
+        viewModelScope.launch {
+            runCatching {
+                val keyPayload = KeyPayloadCodec.publicKeyPayload(state.publicKey)
+                val message = PublicKeyIdentityCodec.messageToSign(label, keyPayload.fingerprint)
+                val signature = signMessageUseCase(message, state.privateKey)
+                PublicKeyIdentityCodec.encode(
+                    PublicKeyIdentityProof(
+                        label = label,
+                        publicKey = keyPayload.publicKey,
+                        fingerprint = keyPayload.fingerprint,
+                        signature = signature,
+                    ),
+                )
+            }
+                .onSuccess { proof ->
+                    _uiState.update {
+                        it.copy(
+                            identityProofPayload = proof,
+                            publicKeyAuthResult = "Identity proof created",
+                            errorMessage = null,
+                            successMessage = "Public key identity proof created",
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    _uiState.update { it.copy(errorMessage = error.message ?: "Unable to create identity proof") }
+                }
+        }
+    }
+
+    fun verifyIdentityProof(context: Context, uri: Uri) {
+        viewModelScope.launch {
+            runCatching {
+                val proof = PublicKeyIdentityCodec.decode(context.readText(uri))
+                require(proof.version == 1) { "Unsupported identity proof version: ${proof.version}" }
+                require(proof.type == "public-key-identity-proof") { "Unsupported identity proof type: ${proof.type}" }
+                require(proof.curve == "BrainpoolP512r1") { "Unsupported curve: ${proof.curve}" }
+                val publicKey = with(KeyPayloadCodec) { proof.publicKey.toDisplayKey() }
+                validatePublicKey(publicKey)?.let { throw IllegalArgumentException(it) }
+                val expectedFingerprint = KeyPayloadCodec.fingerprint(publicKey)
+                require(expectedFingerprint.equals(proof.fingerprint, ignoreCase = true)) {
+                    "Fingerprint does not match public key"
+                }
+                val message = PublicKeyIdentityCodec.messageToSign(proof.label, proof.fingerprint)
+                val valid = verifySignatureUseCase(message, publicKey, proof.signature)
+                require(valid) { "Identity proof signature is invalid" }
+                proof to publicKey
+            }
+                .onSuccess { (proof, publicKey) ->
+                    sessionStore.setKeyPair(sessionStore.state.value.privateKey, publicKey)
+                    _uiState.update {
+                        it.copy(
+                            publicKey = publicKey,
+                            publicKeyAuthResult = "Authenticated public key for ${proof.label}\nFingerprint: ${proof.fingerprint}",
+                            errorMessage = null,
+                            successMessage = "Public key identity proof verified",
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            publicKeyAuthResult = "Public key authentication failed",
+                            errorMessage = error.message ?: "Unable to verify identity proof",
+                        )
+                    }
+                }
+        }
+    }
+
+    fun saveIdentityProof(context: Context, uri: Uri) {
+        context.writeText(uri, _uiState.value.identityProofPayload)
+        _uiState.update { it.copy(successMessage = "Identity proof JSON saved", errorMessage = null) }
     }
 
     private fun Context.readText(uri: Uri): String =

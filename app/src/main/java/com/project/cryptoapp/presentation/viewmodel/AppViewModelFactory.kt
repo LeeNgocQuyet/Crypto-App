@@ -13,6 +13,8 @@ class AppViewModelFactory(
             modelClass.isAssignableFrom(KeyGenerationViewModel::class.java) ->
                 KeyGenerationViewModel(
                     appContainer.generateKeyPairUseCase,
+                    appContainer.signMessageUseCase,
+                    appContainer.verifySignatureUseCase,
                     appContainer.saveHistoryUseCase,
                     appContainer.cryptoSessionStore,
                     appContainer.appSettingsStore,

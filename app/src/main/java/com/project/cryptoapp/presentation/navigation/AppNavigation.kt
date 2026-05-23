@@ -138,6 +138,10 @@ fun AppNavigation(
                     onPreparePrivateKeyBackup = viewModel::preparePrivateKeyBackup,
                     onImportKeyPayload = { viewModel.importKeyPayload(context, it) },
                     onSaveKeyExport = { viewModel.saveKeyExport(context, it) },
+                    onIdentityLabelChange = viewModel::onIdentityLabelChange,
+                    onCreateIdentityProof = viewModel::createPublicKeyIdentityProof,
+                    onVerifyIdentityProof = { viewModel.verifyIdentityProof(context, it) },
+                    onSaveIdentityProof = { viewModel.saveIdentityProof(context, it) },
                 )
             }
             composable(AppRoute.Crypto.route) {
