@@ -38,30 +38,30 @@ class RealECCryptoServiceTest {
     @Test
     fun decryptRejectsWrongAad() {
         runBlocking {
-        val keyPair = service.generateKeyPair()
-        val cipherText = service.encrypt("authenticated message", keyPair.publicKey.toDisplayString(), "right aad")
+            val keyPair = service.generateKeyPair()
+            val cipherText = service.encrypt("authenticated message", keyPair.publicKey.toDisplayString(), "right aad")
 
-        assertThrows(Exception::class.java) {
-            runBlocking {
-                service.decrypt(cipherText.toDisplayString(), keyPair.privateKey, "wrong aad")
+            assertThrows(Exception::class.java) {
+                runBlocking {
+                    service.decrypt(cipherText.toDisplayString(), keyPair.privateKey, "wrong aad")
+                }
             }
         }
-    }
     }
 
     @Test
     fun decryptRejectsTamperedTag() {
         runBlocking {
-        val keyPair = service.generateKeyPair()
-        val cipherText = service.encrypt("authenticated message", keyPair.publicKey.toDisplayString())
-        val tampered = cipherText.toDisplayString().replaceFirst("\"tag\": \"0x", "\"tag\": \"0x00")
+            val keyPair = service.generateKeyPair()
+            val cipherText = service.encrypt("authenticated message", keyPair.publicKey.toDisplayString())
+            val tampered = cipherText.toDisplayString().replaceFirst("\"tag\": \"0x", "\"tag\": \"0x00")
 
-        assertThrows(Exception::class.java) {
-            runBlocking {
-                service.decrypt(tampered, keyPair.privateKey)
+            assertThrows(Exception::class.java) {
+                runBlocking {
+                    service.decrypt(tampered, keyPair.privateKey)
+                }
             }
         }
-    }
     }
 
     @Test
@@ -73,6 +73,18 @@ class RealECCryptoServiceTest {
         val isValid = service.verify(message, keyPair.publicKey.toDisplayString(), signature)
 
         assertTrue(isValid)
+    }
+
+    @Test
+    fun signUsesDeterministicNonceForSameKeyAndMessage() = runBlocking {
+        val keyPair = service.generateKeyPair()
+        val message = "same message"
+
+        val first = service.sign(message, keyPair.privateKey)
+        val second = service.sign(message, keyPair.privateKey)
+
+        assertEquals(first, second)
+        assertTrue(service.verify(message, keyPair.publicKey.toDisplayString(), first))
     }
 
     @Test

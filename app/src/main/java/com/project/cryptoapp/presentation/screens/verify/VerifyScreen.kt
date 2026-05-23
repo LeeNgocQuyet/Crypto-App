@@ -32,11 +32,33 @@ fun VerifyScreen(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        CryptoTextField(state.message, onMessageChange, "Message", minLines = 3)
-        CryptoTextField(state.publicKey, onPublicKeyChange, "Public key Q(x, y)", minLines = 3)
+        CryptoTextField(
+            value = state.message,
+            onValueChange = onMessageChange,
+            label = "Message",
+            minLines = 3,
+            supportingText = "Must match the message that was signed.",
+        )
+        CryptoTextField(
+            value = state.publicKey,
+            onValueChange = onPublicKeyChange,
+            label = "Signer public key Q(x, y)",
+            minLines = 3,
+            supportingText = "Use the public key paired with the signing private key.",
+        )
         CryptoButton("Use Latest Public Key", onClick = onUseLatestPublicKey)
-        CryptoTextField(state.signatureR, onSignatureRChange, "Signature r")
-        CryptoTextField(state.signatureS, onSignatureSChange, "Signature s")
+        CryptoTextField(
+            value = state.signatureR,
+            onValueChange = onSignatureRChange,
+            label = "Signature r",
+            supportingText = "Hex scalar in [1, n - 1].",
+        )
+        CryptoTextField(
+            value = state.signatureS,
+            onValueChange = onSignatureSChange,
+            label = "Signature s",
+            supportingText = "Hex scalar in [1, n - 1].",
+        )
         CryptoButton("Use Latest Signature", onClick = onUseLatestSignature)
         CryptoButton("Verify Signature", onClick = onVerify, isLoading = state.isLoading)
         StatusMessage(state.errorMessage, state.successMessage)

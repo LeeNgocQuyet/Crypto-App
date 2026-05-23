@@ -39,9 +39,27 @@ fun EncryptScreen(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        CryptoTextField(state.plaintext, onPlaintextChange, "Plaintext", minLines = 4)
-        CryptoTextField(state.publicKey, onPublicKeyChange, "Public key Q(x, y)", minLines = 3)
-        CryptoTextField(state.aad, onAadChange, "AAD / Context (optional)", minLines = 2)
+        CryptoTextField(
+            value = state.plaintext,
+            onValueChange = onPlaintextChange,
+            label = "Plaintext",
+            minLines = 4,
+            supportingText = "Encrypted with AES-256-GCM after ECDH/HKDF; no 62-byte ECC point limit.",
+        )
+        CryptoTextField(
+            value = state.publicKey,
+            onValueChange = onPublicKeyChange,
+            label = "Recipient public key Q(x, y)",
+            minLines = 3,
+            supportingText = "Use the receiver's BrainpoolP512r1 public key.",
+        )
+        CryptoTextField(
+            value = state.aad,
+            onValueChange = onAadChange,
+            label = "AAD / Context (optional)",
+            minLines = 2,
+            supportingText = "AAD is authenticated but not encrypted; decrypt must use the same value.",
+        )
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
                 text = "Ciphertext Format",
@@ -64,8 +82,8 @@ fun EncryptScreen(
             }
         }
         CryptoButton("Use Latest Public Key", onClick = onUseLatestPublicKey)
-        CryptoButton("Encrypt Message", onClick = onEncrypt, isLoading = state.isLoading)
+        CryptoButton("Encrypt with ECDH + AES-GCM", onClick = onEncrypt, isLoading = state.isLoading)
         StatusMessage(state.errorMessage, state.successMessage)
-        CryptoOutputCard("Ciphertext", state.cipherText)
+        CryptoOutputCard("Hybrid Ciphertext JSON", state.cipherText)
     }
 }
