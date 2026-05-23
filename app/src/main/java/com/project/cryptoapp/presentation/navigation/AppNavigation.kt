@@ -138,6 +138,8 @@ fun AppNavigation(
                     state = state,
                     onPlaintextChange = viewModel::onPlaintextChange,
                     onPublicKeyChange = viewModel::onPublicKeyChange,
+                    onAadChange = viewModel::onAadChange,
+                    onOutputFormatChange = viewModel::onOutputFormatChange,
                     onUseLatestPublicKey = viewModel::useLatestPublicKey,
                     onEncrypt = viewModel::encrypt,
                 )
@@ -149,6 +151,7 @@ fun AppNavigation(
                     state = state,
                     onCipherTextChange = viewModel::onCipherTextChange,
                     onPrivateKeyChange = viewModel::onPrivateKeyChange,
+                    onAadChange = viewModel::onAadChange,
                     onUseLatestCipherText = viewModel::useLatestCipherText,
                     onUseLatestPrivateKey = viewModel::useLatestPrivateKey,
                     onDecrypt = viewModel::decrypt,

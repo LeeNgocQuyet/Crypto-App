@@ -13,6 +13,8 @@ data class KeyGenerationUiState(
 data class EncryptUiState(
     val plaintext: String = "",
     val publicKey: String = "",
+    val aad: String = "",
+    val outputFormat: String = "Pretty JSON",
     val cipherText: String = "",
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
@@ -22,6 +24,7 @@ data class EncryptUiState(
 data class DecryptUiState(
     val cipherText: String = "",
     val privateKey: String = "",
+    val aad: String = "",
     val plaintext: String = "",
     val isLoading: Boolean = false,
     val errorMessage: String? = null,

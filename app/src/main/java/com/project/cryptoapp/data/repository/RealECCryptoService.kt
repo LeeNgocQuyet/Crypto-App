@@ -7,12 +7,16 @@ import com.project.cryptoapp.domain.model.CipherText
 import com.project.cryptoapp.domain.model.DigitalSignature
 import com.project.cryptoapp.domain.model.ECCKeyPair
 import com.project.cryptoapp.domain.model.ECPoint
+import com.project.cryptoapp.util.CryptoPayloadCodec
 import java.math.BigInteger
-import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.security.SecureRandom
+import javax.crypto.Cipher
+import javax.crypto.Mac
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.SecretKeySpec
 
 class RealECCryptoService(
     private val secureRandom: SecureRandom = SecureRandom(),
@@ -26,32 +30,55 @@ class RealECCryptoService(
         )
     }
 
-    override suspend fun encrypt(plaintext: String, publicKey: String): CipherText {
+    override suspend fun encrypt(plaintext: String, publicKey: String, aad: String): CipherText {
         val recipientPublicKey = parsePublicKey(publicKey)
         requirePointOnCurve(recipientPublicKey, "Public key")
 
-        val messagePoint = encodeMessagePoint(decodeInputPayload(plaintext))
         val ephemeralPrivateKey = randomScalar()
-        val c1 = multiply(ephemeralPrivateKey, BASE_POINT)
+        val ephemeralPublicKey = multiply(ephemeralPrivateKey, BASE_POINT)
         val sharedSecret = multiply(ephemeralPrivateKey, recipientPublicKey)
-        val c2 = add(messagePoint, sharedSecret)
+        require(!sharedSecret.isInfinity) { "ECDH shared secret is invalid" }
+
+        val salt = randomBytes(SALT_BYTES)
+        val nonce = randomBytes(GCM_NONCE_BYTES)
+        val aadBytes = decodeInputPayload(aad)
+        val key = deriveAesKey(sharedSecret, salt)
+        val encrypted = aesGcmEncrypt(key, nonce, decodeInputPayload(plaintext), aadBytes)
 
         return CipherText(
-            c1 = c1.toDomainPoint(),
-            c2 = c2.toDomainPoint(),
+            algorithm = ALGORITHM,
+            curve = CURVE_NAME,
+            ephemeralPublicKey = ephemeralPublicKey.toDomainPoint(),
+            salt = salt.toHexString(),
+            nonce = nonce.toHexString(),
+            aad = aadBytes.toHexString(),
+            cipherText = encrypted.cipherText.toHexString(),
+            tag = encrypted.tag.toHexString(),
         )
     }
 
-    override suspend fun decrypt(cipherText: String, privateKey: String): String {
+    override suspend fun decrypt(cipherText: String, privateKey: String, aad: String): String {
         val secret = parsePrivateKey(privateKey)
-        val (c1, c2) = parseCipherText(cipherText)
-        requirePointOnCurve(c1, "C1")
-        requirePointOnCurve(c2, "C2")
+        val payload = CryptoPayloadCodec.decode(cipherText)
+        require(payload.algorithm == ALGORITHM) { "Unsupported algorithm: ${payload.algorithm}" }
+        require(payload.curve == CURVE_NAME) { "Unsupported curve: ${payload.curve}" }
 
-        val sharedSecret = multiply(secret, c1)
-        val messagePoint = add(c2, negate(sharedSecret))
-        val payload = decodeMessagePoint(messagePoint)
-        return encodeOutputPayload(payload)
+        val ephemeralPublicKey = CurvePoint(
+            x = parseHex(payload.ephemeralPublicKey.x, "ephemeralPublicKey.x"),
+            y = parseHex(payload.ephemeralPublicKey.y, "ephemeralPublicKey.y"),
+        )
+        requirePointOnCurve(ephemeralPublicKey, "Ephemeral public key")
+
+        val sharedSecret = multiply(secret, ephemeralPublicKey)
+        require(!sharedSecret.isInfinity) { "ECDH shared secret is invalid" }
+
+        val salt = parseHexBytes(payload.salt, "salt")
+        val nonce = parseHexBytes(payload.nonce, "nonce")
+        val aadBytes = if (aad.isBlank()) parseHexBytes(payload.aad, "aad") else decodeInputPayload(aad)
+        val encryptedBytes = parseHexBytes(payload.cipherText, "ciphertext")
+        val tag = parseHexBytes(payload.tag, "tag")
+        val key = deriveAesKey(sharedSecret, salt)
+        return encodeOutputPayload(aesGcmDecrypt(key, nonce, encryptedBytes, tag, aadBytes))
     }
 
     override suspend fun sign(message: String, privateKey: String): DigitalSignature {
@@ -109,14 +136,6 @@ class RealECCryptoService(
         return CurvePoint(x, y)
     }
 
-    private fun parseCipherText(value: String): Pair<CurvePoint, CurvePoint> {
-        val c1x = readLabeledHex(value, "C1.x") ?: throw IllegalArgumentException("Ciphertext is missing C1.x")
-        val c1y = readLabeledHex(value, "C1.y") ?: throw IllegalArgumentException("Ciphertext is missing C1.y")
-        val c2x = readLabeledHex(value, "C2.x") ?: throw IllegalArgumentException("Ciphertext is missing C2.x")
-        val c2y = readLabeledHex(value, "C2.y") ?: throw IllegalArgumentException("Ciphertext is missing C2.y")
-        return CurvePoint(c1x, c1y) to CurvePoint(c2x, c2y)
-    }
-
     private fun readLabeledHex(source: String, label: String): BigInteger? {
         val escapedLabel = Regex.escape(label)
         val regex = Regex("""(?im)^\s*$escapedLabel\s*:\s*(0x[0-9a-f]+|[0-9a-f]+)\s*$""")
@@ -129,6 +148,14 @@ class RealECCryptoService(
             "$label must be hex"
         }
         return BigInteger(normalized, 16)
+    }
+
+    private fun parseHexBytes(value: String, label: String): ByteArray {
+        val normalized = value.trim().removePrefix("0x").removePrefix("0X")
+        require(normalized.length % 2 == 0 && normalized.all { it in HEX_DIGITS }) {
+            "$label must be even-length hex"
+        }
+        return normalized.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
     }
 
     private fun requirePointOnCurve(point: CurvePoint, label: String) {
@@ -144,45 +171,8 @@ class RealECCryptoService(
         require(left == right) { "$label is not on BrainpoolP512r1" }
     }
 
-    private fun encodeMessagePoint(payload: ByteArray): CurvePoint {
-        require(payload.isNotEmpty()) { "Plaintext is required" }
-        require(payload.size <= MAX_PAYLOAD_BYTES) {
-            "Plaintext is too long for one ECC block. Maximum is $MAX_PAYLOAD_BYTES bytes."
-        }
-
-        val encoded = ByteBuffer.allocate(payload.size + 1)
-            .put(payload.size.toByte())
-            .put(payload)
-            .array()
-        val baseX = BigInteger(1, encoded).multiply(MAPPING_FACTOR)
-
-        repeat(MAPPING_FACTOR.toInt()) { offset ->
-            val x = baseX.add(BigInteger.valueOf(offset.toLong()))
-            if (x >= P) return@repeat
-            val rhs = x.modPow(THREE, P)
-                .add(A.multiply(x))
-                .add(B)
-                .mod(P)
-            val y = sqrtModP(rhs) ?: return@repeat
-            return CurvePoint(x, y)
-        }
-
-        throw IllegalArgumentException("Unable to map plaintext to a curve point")
-    }
-
-    private fun decodeMessagePoint(point: CurvePoint): ByteArray {
-        requirePointOnCurve(point, "Decoded message point")
-        val messageInteger = point.x.divide(MAPPING_FACTOR)
-        val bytes = messageInteger.toByteArray().dropWhile { it == 0.toByte() }.toByteArray()
-        require(bytes.isNotEmpty()) { "Decoded message is empty" }
-
-        val length = bytes.first().toInt() and 0xFF
-        require(length in 1..MAX_PAYLOAD_BYTES) { "Decoded message length is invalid" }
-        require(bytes.size == length + 1) { "Decoded message block is malformed" }
-        return bytes.copyOfRange(1, bytes.size)
-    }
-
     private fun decodeInputPayload(value: String): ByteArray {
+        if (value.isBlank()) return ByteArray(0)
         val trimmed = value.trim()
         val hex = trimmed.removePrefix("0x").removePrefix("0X")
         return if (trimmed.startsWith("0x", ignoreCase = true) && hex.length % 2 == 0 && hex.all { it in HEX_DIGITS }) {
@@ -218,9 +208,71 @@ class RealECCryptoService(
         }
     }
 
-    private fun sqrtModP(value: BigInteger): BigInteger? {
-        val root = value.modPow(P.add(ONE).shiftRight(2), P)
-        return if (root.multiply(root).mod(P) == value.mod(P)) root else null
+    private fun randomBytes(size: Int): ByteArray =
+        ByteArray(size).also(secureRandom::nextBytes)
+
+    private fun deriveAesKey(sharedSecret: CurvePoint, salt: ByteArray): ByteArray {
+        val inputKeyMaterial = sharedSecret.x.toFixedBytes(FIELD_BYTES) + sharedSecret.y.toFixedBytes(FIELD_BYTES)
+        return hkdfSha512(
+            inputKeyMaterial = inputKeyMaterial,
+            salt = salt,
+            info = HKDF_INFO.toByteArray(StandardCharsets.UTF_8),
+            outputLength = AES_KEY_BYTES,
+        )
+    }
+
+    private fun hkdfSha512(
+        inputKeyMaterial: ByteArray,
+        salt: ByteArray,
+        info: ByteArray,
+        outputLength: Int,
+    ): ByteArray {
+        val mac = Mac.getInstance(HMAC_SHA512)
+        mac.init(SecretKeySpec(salt, HMAC_SHA512))
+        val pseudoRandomKey = mac.doFinal(inputKeyMaterial)
+
+        val output = mutableListOf<Byte>()
+        var previous = ByteArray(0)
+        var counter = 1
+        while (output.size < outputLength) {
+            mac.init(SecretKeySpec(pseudoRandomKey, HMAC_SHA512))
+            mac.update(previous)
+            mac.update(info)
+            mac.update(counter.toByte())
+            previous = mac.doFinal()
+            output.addAll(previous.toList())
+            counter++
+        }
+        return output.take(outputLength).toByteArray()
+    }
+
+    private fun aesGcmEncrypt(
+        key: ByteArray,
+        nonce: ByteArray,
+        plaintext: ByteArray,
+        aad: ByteArray,
+    ): AeadResult {
+        val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
+        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, AES), GCMParameterSpec(GCM_TAG_BITS, nonce))
+        if (aad.isNotEmpty()) cipher.updateAAD(aad)
+        val sealed = cipher.doFinal(plaintext)
+        return AeadResult(
+            cipherText = sealed.copyOfRange(0, sealed.size - GCM_TAG_BYTES),
+            tag = sealed.copyOfRange(sealed.size - GCM_TAG_BYTES, sealed.size),
+        )
+    }
+
+    private fun aesGcmDecrypt(
+        key: ByteArray,
+        nonce: ByteArray,
+        cipherText: ByteArray,
+        tag: ByteArray,
+        aad: ByteArray,
+    ): ByteArray {
+        val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
+        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, AES), GCMParameterSpec(GCM_TAG_BITS, nonce))
+        if (aad.isNotEmpty()) cipher.updateAAD(aad)
+        return cipher.doFinal(cipherText + tag)
     }
 
     private fun add(left: CurvePoint, right: CurvePoint): CurvePoint {
@@ -251,9 +303,6 @@ class RealECCryptoService(
         return CurvePoint(x3, y3)
     }
 
-    private fun negate(point: CurvePoint): CurvePoint =
-        if (point.isInfinity) point else CurvePoint(point.x, P.subtract(point.y).mod(P))
-
     private fun multiply(scalar: BigInteger, point: CurvePoint): CurvePoint {
         var k = scalar.mod(N)
         var addend = point
@@ -270,6 +319,21 @@ class RealECCryptoService(
 
     private fun CurvePoint.toDomainPoint(): ECPoint =
         ECPoint(x = x.toHex(), y = y.toHex(), isInfinity = isInfinity)
+
+    private fun BigInteger.toFixedBytes(size: Int): ByteArray {
+        val raw = toByteArray()
+        val unsigned = if (raw.size > 1 && raw.first() == 0.toByte()) raw.copyOfRange(1, raw.size) else raw
+        require(unsigned.size <= size) { "Integer is too large" }
+        return ByteArray(size - unsigned.size) + unsigned
+    }
+
+    private fun ByteArray.toHexString(): String =
+        "0x" + joinToString("") { "%02X".format(it) }
+
+    private data class AeadResult(
+        val cipherText: ByteArray,
+        val tag: ByteArray,
+    )
 
     private data class CurvePoint(
         val x: BigInteger,
@@ -290,9 +354,19 @@ class RealECCryptoService(
         val ONE: BigInteger = BigInteger.ONE
         val TWO: BigInteger = BigInteger.valueOf(2)
         val THREE: BigInteger = BigInteger.valueOf(3)
-        val MAPPING_FACTOR: BigInteger = BigInteger.valueOf(256)
-        const val MAX_PAYLOAD_BYTES = 62
         const val HEX_DIGITS = "0123456789abcdefABCDEF"
+        const val CURVE_NAME = "BrainpoolP512r1"
+        const val ALGORITHM = "ECDH-HKDF-SHA512-AES-256-GCM"
+        const val HKDF_INFO = "CryptoApp|BrainpoolP512r1|ECDH-HKDF-SHA512-AES-256-GCM|v1"
+        const val HMAC_SHA512 = "HmacSHA512"
+        const val AES_GCM_TRANSFORMATION = "AES/GCM/NoPadding"
+        const val AES = "AES"
+        const val FIELD_BYTES = 64
+        const val AES_KEY_BYTES = 32
+        const val SALT_BYTES = 32
+        const val GCM_NONCE_BYTES = 12
+        const val GCM_TAG_BYTES = 16
+        const val GCM_TAG_BITS = 128
         val PRINTABLE_CONTROLS = setOf('\n', '\r', '\t')
     }
 }

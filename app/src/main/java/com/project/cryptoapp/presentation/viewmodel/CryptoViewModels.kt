@@ -92,6 +92,8 @@ class EncryptViewModel(
 
     fun onPlaintextChange(value: String) = _uiState.update { it.copy(plaintext = value) }
     fun onPublicKeyChange(value: String) = _uiState.update { it.copy(publicKey = value) }
+    fun onAadChange(value: String) = _uiState.update { it.copy(aad = value) }
+    fun onOutputFormatChange(value: String) = _uiState.update { it.copy(outputFormat = value) }
 
     init {
         val publicKey = sessionStore.state.value.publicKey
@@ -122,7 +124,10 @@ class EncryptViewModel(
 
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
-            runCatching { encryptMessageUseCase(state.plaintext, state.publicKey).toDisplayString() }
+            runCatching {
+                encryptMessageUseCase(state.plaintext, state.publicKey, state.aad)
+                    .toDisplayString(pretty = state.outputFormat == "Pretty JSON")
+            }
                 .onSuccess { output ->
                     sessionStore.setCipherText(output)
                     _uiState.update {
@@ -160,6 +165,7 @@ class DecryptViewModel(
 
     fun onCipherTextChange(value: String) = _uiState.update { it.copy(cipherText = value) }
     fun onPrivateKeyChange(value: String) = _uiState.update { it.copy(privateKey = value) }
+    fun onAadChange(value: String) = _uiState.update { it.copy(aad = value) }
 
     init {
         val session = sessionStore.state.value
@@ -199,7 +205,7 @@ class DecryptViewModel(
 
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
-            runCatching { decryptMessageUseCase(state.cipherText, state.privateKey) }
+            runCatching { decryptMessageUseCase(state.cipherText, state.privateKey, state.aad) }
                 .onSuccess { output ->
                     _uiState.update {
                         it.copy(plaintext = output, isLoading = false, successMessage = "Ciphertext decrypted")
