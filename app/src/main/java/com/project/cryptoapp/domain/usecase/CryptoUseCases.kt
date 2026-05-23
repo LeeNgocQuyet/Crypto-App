@@ -15,15 +15,15 @@ class GenerateKeyPairUseCase(
 class EncryptMessageUseCase(
     private val cryptoService: ECCryptoService,
 ) {
-    suspend operator fun invoke(plaintext: String, publicKey: String) =
-        cryptoService.encrypt(plaintext, publicKey)
+    suspend operator fun invoke(plaintext: String, publicKey: String, aad: String = "") =
+        cryptoService.encrypt(plaintext, publicKey, aad)
 }
 
 class DecryptMessageUseCase(
     private val cryptoService: ECCryptoService,
 ) {
-    suspend operator fun invoke(cipherText: String, privateKey: String) =
-        cryptoService.decrypt(cipherText, privateKey)
+    suspend operator fun invoke(cipherText: String, privateKey: String, aad: String = "") =
+        cryptoService.decrypt(cipherText, privateKey, aad)
 }
 
 class SignMessageUseCase(
