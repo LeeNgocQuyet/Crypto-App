@@ -4,6 +4,7 @@ import com.project.cryptoapp.data.repository.RealECCryptoService
 import com.project.cryptoapp.util.toDisplayString
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -20,6 +21,47 @@ class RealECCryptoServiceTest {
         val decrypted = service.decrypt(cipherText.toDisplayString(), keyPair.privateKey)
 
         assertEquals(plaintext, decrypted)
+    }
+
+    @Test
+    fun hybridEncryptionSupportsLongPlaintextAndAad() = runBlocking {
+        val keyPair = service.generateKeyPair()
+        val plaintext = "This message is intentionally longer than the previous 62 byte ECC point mapping limit."
+        val aad = "course=MMATTT;purpose=demo"
+
+        val cipherText = service.encrypt(plaintext, keyPair.publicKey.toDisplayString(), aad)
+        val decrypted = service.decrypt(cipherText.toDisplayString(), keyPair.privateKey, aad)
+
+        assertEquals(plaintext, decrypted)
+    }
+
+    @Test
+    fun decryptRejectsWrongAad() {
+        runBlocking {
+        val keyPair = service.generateKeyPair()
+        val cipherText = service.encrypt("authenticated message", keyPair.publicKey.toDisplayString(), "right aad")
+
+        assertThrows(Exception::class.java) {
+            runBlocking {
+                service.decrypt(cipherText.toDisplayString(), keyPair.privateKey, "wrong aad")
+            }
+        }
+    }
+    }
+
+    @Test
+    fun decryptRejectsTamperedTag() {
+        runBlocking {
+        val keyPair = service.generateKeyPair()
+        val cipherText = service.encrypt("authenticated message", keyPair.publicKey.toDisplayString())
+        val tampered = cipherText.toDisplayString().replaceFirst("\"tag\": \"0x", "\"tag\": \"0x00")
+
+        assertThrows(Exception::class.java) {
+            runBlocking {
+                service.decrypt(tampered, keyPair.privateKey)
+            }
+        }
+    }
     }
 
     @Test

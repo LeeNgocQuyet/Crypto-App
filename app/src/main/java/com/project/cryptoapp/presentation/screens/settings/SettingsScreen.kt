@@ -150,14 +150,14 @@ fun SettingsScreen(
 
         SettingsCard(
             title = "About App",
-            description = "Version 1.0\nAlgorithm: EC ElGamal + ECDSA\nCurve: BrainpoolP512r1 over Fp",
+            description = "Version 1.0\nEncryption: ECDH + HKDF-SHA512 + AES-256-GCM\nSignature: ECDSA-SHA512\nCurve: BrainpoolP512r1 over Fp",
             icon = Icons.Filled.Info,
             accentColor = Color(0xFF70E1F5),
         )
 
         SettingsCard(
             title = "Security Warning",
-            description = "Educational purpose only. The app uses real curve arithmetic but does not include production-grade message padding, authentication, or secure key storage.",
+            description = "Educational purpose only. Messages are authenticated with AES-GCM, but private keys are not yet protected by Android Keystore.",
             icon = Icons.Filled.Warning,
             accentColor = Color(0xFFFFC857),
         )

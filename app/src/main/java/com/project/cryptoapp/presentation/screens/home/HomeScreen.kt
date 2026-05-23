@@ -52,14 +52,14 @@ fun HomeScreen(
         ),
         DashboardOperation(
             title = "Encrypt",
-            description = "Encrypt plaintext with EC ElGamal.",
+            description = "Encrypt with ECDH, HKDF and AES-GCM.",
             icon = Icons.Filled.Lock,
             accentColor = CyberTertiary,
             route = AppRoute.Encrypt,
         ),
         DashboardOperation(
             title = "Decrypt",
-            description = "Recover plaintext from C1 and C2 points.",
+            description = "Recover plaintext from hybrid JSON ciphertext.",
             icon = Icons.Filled.Security,
             accentColor = Color(0xFFFFC857),
             route = AppRoute.Decrypt,
@@ -139,7 +139,7 @@ private fun HeroCard(modifier: Modifier = Modifier) {
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = "Elliptic Curve Cryptography with real curve arithmetic",
+                text = "Hybrid ECDH encryption and ECDSA signatures",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
