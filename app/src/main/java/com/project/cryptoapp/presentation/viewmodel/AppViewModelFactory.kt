@@ -16,6 +16,7 @@ class AppViewModelFactory(
                     appContainer.saveHistoryUseCase,
                     appContainer.cryptoSessionStore,
                     appContainer.appSettingsStore,
+                    appContainer.protectedKeyStore,
                 )
 
             modelClass.isAssignableFrom(EncryptViewModel::class.java) ->
@@ -44,6 +45,17 @@ class AppViewModelFactory(
 
             modelClass.isAssignableFrom(VerifyViewModel::class.java) ->
                 VerifyViewModel(
+                    appContainer.verifySignatureUseCase,
+                    appContainer.saveHistoryUseCase,
+                    appContainer.cryptoSessionStore,
+                    appContainer.appSettingsStore,
+                )
+
+            modelClass.isAssignableFrom(FileToolsViewModel::class.java) ->
+                FileToolsViewModel(
+                    appContainer.encryptMessageUseCase,
+                    appContainer.decryptMessageUseCase,
+                    appContainer.signMessageUseCase,
                     appContainer.verifySignatureUseCase,
                     appContainer.saveHistoryUseCase,
                     appContainer.cryptoSessionStore,
