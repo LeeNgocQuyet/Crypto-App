@@ -21,8 +21,15 @@ data class ECCKeyPair(
 )
 
 data class CipherText(
-    val c1: ECPoint,
-    val c2: ECPoint,
+    val version: Int = 1,
+    val algorithm: String,
+    val curve: String,
+    val ephemeralPublicKey: ECPoint,
+    val salt: String,
+    val nonce: String,
+    val aad: String,
+    val cipherText: String,
+    val tag: String,
 )
 
 data class DigitalSignature(

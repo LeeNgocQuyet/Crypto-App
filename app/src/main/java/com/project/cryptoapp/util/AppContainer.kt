@@ -4,7 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import com.project.cryptoapp.data.local.database.AppDatabase
 import com.project.cryptoapp.data.repository.CryptoHistoryRepositoryImpl
-import com.project.cryptoapp.data.repository.MockECCryptoService
+import com.project.cryptoapp.data.repository.RealECCryptoService
 import com.project.cryptoapp.domain.crypto.ECCryptoService
 import com.project.cryptoapp.domain.repository.CryptoHistoryRepository
 import com.project.cryptoapp.domain.usecase.ClearHistoryUseCase
@@ -24,7 +24,7 @@ class AppContainer(context: Context) {
         "ecc512_crypto.db",
     ).build()
 
-    val cryptoService: ECCryptoService = MockECCryptoService()
+    val cryptoService: ECCryptoService = RealECCryptoService()
     val cryptoSessionStore = CryptoSessionStore()
     val appSettingsStore = AppSettingsStore()
 

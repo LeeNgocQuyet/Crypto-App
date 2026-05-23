@@ -19,9 +19,12 @@ fun validatePublicKey(value: String): String? = when {
 
 fun validateCipherText(value: String): String? = when {
     value.isBlank() -> "Ciphertext is required"
-    !value.contains("C1", ignoreCase = true) || !value.contains("C2", ignoreCase = true) ->
-        "Ciphertext should include C1 and C2 points"
-    !value.contains("0x", ignoreCase = true) -> "Ciphertext coordinates should be hex values"
+    !value.contains("algorithm", ignoreCase = true) ||
+        !value.contains("ephemeralPublicKey", ignoreCase = true) ||
+        !value.contains("ciphertext", ignoreCase = true) ||
+        !value.contains("tag", ignoreCase = true) ->
+        "Ciphertext should be the hybrid JSON payload produced by Encrypt"
+    !value.contains("ECDH-HKDF-SHA512-AES-256-GCM") -> "Unsupported ciphertext algorithm"
     else -> null
 }
 

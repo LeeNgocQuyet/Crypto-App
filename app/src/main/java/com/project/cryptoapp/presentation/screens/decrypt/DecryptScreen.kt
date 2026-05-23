@@ -19,6 +19,7 @@ fun DecryptScreen(
     state: DecryptUiState,
     onCipherTextChange: (String) -> Unit,
     onPrivateKeyChange: (String) -> Unit,
+    onAadChange: (String) -> Unit,
     onUseLatestCipherText: () -> Unit,
     onUseLatestPrivateKey: () -> Unit,
     onDecrypt: () -> Unit,
@@ -30,9 +31,10 @@ fun DecryptScreen(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        CryptoTextField(state.cipherText, onCipherTextChange, "Ciphertext C1, C2", minLines = 5)
+        CryptoTextField(state.cipherText, onCipherTextChange, "Hybrid ciphertext JSON", minLines = 7)
         CryptoButton("Use Latest Ciphertext", onClick = onUseLatestCipherText)
         CryptoTextField(state.privateKey, onPrivateKeyChange, "Private key", minLines = 2)
+        CryptoTextField(state.aad, onAadChange, "AAD / Context override (optional)", minLines = 2)
         CryptoButton("Use Latest Private Key", onClick = onUseLatestPrivateKey)
         CryptoButton("Decrypt Message", onClick = onDecrypt, isLoading = state.isLoading)
         StatusMessage(state.errorMessage, state.successMessage)

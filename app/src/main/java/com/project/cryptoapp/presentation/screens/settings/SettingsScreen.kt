@@ -70,7 +70,7 @@ fun SettingsScreen(
     ) {
         SettingsCard(
             title = "Crypto Engine",
-            description = if (state.useMockCrypto) "Mock ECC service enabled" else "Real ECC service enabled",
+            description = "Real ECC service enabled",
             icon = Icons.Filled.Security,
             accentColor = CyberPrimary,
         ) {
@@ -150,14 +150,14 @@ fun SettingsScreen(
 
         SettingsCard(
             title = "About App",
-            description = "Version 1.0\nAlgorithm: ECC mock service\nField: prime field Fp, target size 512-bit",
+            description = "Version 1.0\nEncryption: ECDH + HKDF-SHA512 + AES-256-GCM\nSignature: ECDSA-SHA512\nCurve: BrainpoolP512r1 over Fp",
             icon = Icons.Filled.Info,
             accentColor = Color(0xFF70E1F5),
         )
 
         SettingsCard(
             title = "Security Warning",
-            description = "Educational purpose only. Current cryptographic operations are mock placeholders and must not be used for production security.",
+            description = "Educational purpose only. Messages are authenticated with AES-GCM, but private keys are not yet protected by Android Keystore.",
             icon = Icons.Filled.Warning,
             accentColor = Color(0xFFFFC857),
         )

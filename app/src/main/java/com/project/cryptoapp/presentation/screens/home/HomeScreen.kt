@@ -45,35 +45,35 @@ fun HomeScreen(
     val operations = listOf(
         DashboardOperation(
             title = "Generate Keys",
-            description = "Create a mock ECC-512 private/public key pair.",
+            description = "Create a BrainpoolP512r1 private/public key pair.",
             icon = Icons.Filled.VpnKey,
             accentColor = CyberPrimary,
             route = AppRoute.Keys,
         ),
         DashboardOperation(
             title = "Encrypt",
-            description = "Encrypt plaintext with a public key placeholder.",
+            description = "Encrypt with ECDH, HKDF and AES-GCM.",
             icon = Icons.Filled.Lock,
             accentColor = CyberTertiary,
             route = AppRoute.Encrypt,
         ),
         DashboardOperation(
             title = "Decrypt",
-            description = "Recover plaintext from ciphertext mock input.",
+            description = "Recover plaintext from hybrid JSON ciphertext.",
             icon = Icons.Filled.Security,
             accentColor = Color(0xFFFFC857),
             route = AppRoute.Decrypt,
         ),
         DashboardOperation(
             title = "Sign Message",
-            description = "Generate a mock digital signature r and s.",
+            description = "Generate an ECDSA signature r and s.",
             icon = Icons.Filled.Create,
             accentColor = CyberSecondary,
             route = AppRoute.Sign,
         ),
         DashboardOperation(
             title = "Verify Signature",
-            description = "Validate message, public key and signature fields.",
+            description = "Verify an ECDSA signature.",
             icon = Icons.Filled.CheckCircle,
             accentColor = Color(0xFF70E1F5),
             route = AppRoute.Verify,
@@ -133,13 +133,13 @@ private fun HeroCard(modifier: Modifier = Modifier) {
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(
-                text = "ECC over Fp — 512-bit",
+                text = "BrainpoolP512r1 over Fp - 512-bit",
                 style = MaterialTheme.typography.headlineSmall,
                 color = CyberPrimary,
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = "Elliptic Curve Cryptography over a 512-bit prime field",
+                text = "Hybrid ECDH encryption and ECDSA signatures",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

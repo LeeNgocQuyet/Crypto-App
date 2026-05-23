@@ -16,8 +16,8 @@ fun ECPoint.toDisplayString(): String =
         "x: $x\ny: $y"
     }
 
-fun CipherText.toDisplayString(): String =
-    "C1.x: ${c1.x}\nC1.y: ${c1.y}\nC2.x: ${c2.x}\nC2.y: ${c2.y}"
+fun CipherText.toDisplayString(pretty: Boolean = true): String =
+    CryptoPayloadCodec.encode(this, pretty)
 
 fun DigitalSignature.toDisplayString(): String = "r: $r\ns: $s"
 
