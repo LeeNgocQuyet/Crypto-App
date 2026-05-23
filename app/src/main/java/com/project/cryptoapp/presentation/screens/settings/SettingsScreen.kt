@@ -70,7 +70,7 @@ fun SettingsScreen(
     ) {
         SettingsCard(
             title = "Crypto Engine",
-            description = "Real ECC service enabled",
+            description = "BrainpoolP512r1 with hybrid ECDH encryption and deterministic ECDSA",
             icon = Icons.Filled.Security,
             accentColor = CyberPrimary,
         ) {
@@ -150,7 +150,7 @@ fun SettingsScreen(
 
         SettingsCard(
             title = "About App",
-            description = "Version 1.0\nEncryption: ECDH + HKDF-SHA512 + AES-256-GCM\nSignature: deterministic ECDSA-SHA512\nCurve: BrainpoolP512r1 over Fp",
+            description = "Version 1.0\nEncryption: ECDH + HKDF-SHA512 + AES-256-GCM\nCiphertext: JSON with nonce, salt, tag and ephemeral public key\nSignature: deterministic ECDSA-SHA512\nCurve: BrainpoolP512r1 over Fp",
             icon = Icons.Filled.Info,
             accentColor = Color(0xFF70E1F5),
         )

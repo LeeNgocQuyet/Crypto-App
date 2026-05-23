@@ -29,10 +29,22 @@ fun SignScreen(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        CryptoTextField(state.message, onMessageChange, "Message", minLines = 4)
-        CryptoTextField(state.privateKey, onPrivateKeyChange, "Private key", minLines = 2)
+        CryptoTextField(
+            value = state.message,
+            onValueChange = onMessageChange,
+            label = "Message",
+            minLines = 4,
+            supportingText = "Signed with deterministic ECDSA-SHA512.",
+        )
+        CryptoTextField(
+            value = state.privateKey,
+            onValueChange = onPrivateKeyChange,
+            label = "Private key",
+            minLines = 2,
+            supportingText = "Nonce k is derived deterministically from this key and message.",
+        )
         CryptoButton("Use Latest Private Key", onClick = onUseLatestPrivateKey)
-        CryptoButton("Sign Message", onClick = onSign, isLoading = state.isLoading)
+        CryptoButton("Sign with Deterministic ECDSA", onClick = onSign, isLoading = state.isLoading)
         StatusMessage(state.errorMessage, state.successMessage)
         CryptoOutputCard("Digital Signature", state.signature)
     }

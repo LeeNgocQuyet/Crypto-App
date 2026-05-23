@@ -18,6 +18,7 @@ import com.project.cryptoapp.domain.usecase.VerifySignatureUseCase
 import com.project.cryptoapp.util.AppSettingsStore
 import com.project.cryptoapp.util.CryptoSessionStore
 import com.project.cryptoapp.util.toDisplayString
+import com.project.cryptoapp.util.validateAad
 import com.project.cryptoapp.util.validateCipherText
 import com.project.cryptoapp.util.validatePayload
 import com.project.cryptoapp.util.validatePrivateKey
@@ -116,6 +117,7 @@ class EncryptViewModel(
         val validationError = when {
             else -> validatePayload("Plaintext", state.plaintext, settingsStore.state.value.defaultEncoding)
                 ?: validatePublicKey(state.publicKey)
+                ?: validateAad(state.aad, settingsStore.state.value.defaultEncoding)
         }
         if (validationError != null) {
             _uiState.update { it.copy(errorMessage = validationError) }
@@ -133,12 +135,22 @@ class EncryptViewModel(
                     _uiState.update {
                         it.copy(cipherText = output, isLoading = false, successMessage = "Message encrypted")
                     }
-                    saveHistory(OperationType.ENCRYPT, state.plaintext, output, OperationStatus.SUCCESS)
+                    saveHistory(
+                        OperationType.ENCRYPT,
+                        "Hybrid encrypt (${state.plaintext.length} chars)",
+                        output,
+                        OperationStatus.SUCCESS,
+                    )
                 }
                 .onFailure { error ->
                     val message = error.message ?: "Encryption failed"
                     _uiState.update { it.copy(isLoading = false, errorMessage = message) }
-                    saveHistory(OperationType.ENCRYPT, state.plaintext, message, OperationStatus.FAILED)
+                    saveHistory(
+                        OperationType.ENCRYPT,
+                        "Hybrid encrypt (${state.plaintext.length} chars)",
+                        message,
+                        OperationStatus.FAILED,
+                    )
                 }
         }
     }
@@ -197,7 +209,9 @@ class DecryptViewModel(
 
     fun decrypt() {
         val state = _uiState.value
-        val validationError = validateCipherText(state.cipherText) ?: validatePrivateKey(state.privateKey)
+        val validationError = validateCipherText(state.cipherText)
+            ?: validatePrivateKey(state.privateKey)
+            ?: validateAad(state.aad, settingsStore.state.value.defaultEncoding)
         if (validationError != null) {
             _uiState.update { it.copy(errorMessage = validationError) }
             return
@@ -210,12 +224,12 @@ class DecryptViewModel(
                     _uiState.update {
                         it.copy(plaintext = output, isLoading = false, successMessage = "Ciphertext decrypted")
                     }
-                    saveHistory(OperationType.DECRYPT, state.cipherText, output, OperationStatus.SUCCESS)
+                    saveHistory(OperationType.DECRYPT, "Hybrid ciphertext JSON", output, OperationStatus.SUCCESS)
                 }
                 .onFailure { error ->
                     val message = error.message ?: "Decryption failed"
                     _uiState.update { it.copy(isLoading = false, errorMessage = message) }
-                    saveHistory(OperationType.DECRYPT, state.cipherText, message, OperationStatus.FAILED)
+                    saveHistory(OperationType.DECRYPT, "Hybrid ciphertext JSON", message, OperationStatus.FAILED)
                 }
         }
     }

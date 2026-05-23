@@ -52,21 +52,21 @@ fun HomeScreen(
         ),
         DashboardOperation(
             title = "Encrypt",
-            description = "Encrypt with ECDH, HKDF and AES-GCM.",
+            description = "Create authenticated hybrid JSON ciphertext.",
             icon = Icons.Filled.Lock,
             accentColor = CyberTertiary,
             route = AppRoute.Encrypt,
         ),
         DashboardOperation(
             title = "Decrypt",
-            description = "Recover plaintext from hybrid JSON ciphertext.",
+            description = "Verify AES-GCM tag and recover plaintext.",
             icon = Icons.Filled.Security,
             accentColor = Color(0xFFFFC857),
             route = AppRoute.Decrypt,
         ),
         DashboardOperation(
             title = "Sign Message",
-            description = "Generate a deterministic ECDSA signature.",
+            description = "Generate deterministic ECDSA-SHA512 r and s.",
             icon = Icons.Filled.Create,
             accentColor = CyberSecondary,
             route = AppRoute.Sign,
@@ -139,7 +139,7 @@ private fun HeroCard(modifier: Modifier = Modifier) {
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = "Hybrid ECDH encryption and ECDSA signatures",
+                text = "ECDH + HKDF-SHA512 + AES-256-GCM, with deterministic ECDSA signatures",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
