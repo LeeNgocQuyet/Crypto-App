@@ -79,6 +79,13 @@ fun HomeScreen(
             route = AppRoute.Verify,
         ),
         DashboardOperation(
+            title = "File Tools",
+            description = "Encrypt files and sign SHA-512 file digests.",
+            icon = Icons.Filled.Security,
+            accentColor = Color(0xFF8BE9C7),
+            route = AppRoute.FileTools,
+        ),
+        DashboardOperation(
             title = "History",
             description = "Review saved Room operation logs.",
             icon = Icons.Filled.History,

@@ -17,6 +17,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
@@ -28,6 +29,7 @@ import com.project.cryptoapp.presentation.screens.crypto.CryptoScreen
 import com.project.cryptoapp.presentation.screens.curve.CurveParametersScreen
 import com.project.cryptoapp.presentation.screens.decrypt.DecryptScreen
 import com.project.cryptoapp.presentation.screens.encrypt.EncryptScreen
+import com.project.cryptoapp.presentation.screens.files.FileToolsScreen
 import com.project.cryptoapp.presentation.screens.history.HistoryScreen
 import com.project.cryptoapp.presentation.screens.home.HomeScreen
 import com.project.cryptoapp.presentation.screens.keys.KeyGenerationScreen
@@ -37,6 +39,7 @@ import com.project.cryptoapp.presentation.screens.verify.VerifyScreen
 import com.project.cryptoapp.presentation.viewmodel.AppViewModelFactory
 import com.project.cryptoapp.presentation.viewmodel.DecryptViewModel
 import com.project.cryptoapp.presentation.viewmodel.EncryptViewModel
+import com.project.cryptoapp.presentation.viewmodel.FileToolsViewModel
 import com.project.cryptoapp.presentation.viewmodel.HistoryViewModel
 import com.project.cryptoapp.presentation.viewmodel.KeyGenerationViewModel
 import com.project.cryptoapp.presentation.viewmodel.SettingsViewModel
@@ -51,6 +54,7 @@ fun AppNavigation(
     modifier: Modifier = Modifier,
 ) {
     val navController = rememberNavController()
+    val context = LocalContext.current
     val factory = remember(appContainer) { AppViewModelFactory(appContainer) }
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
@@ -60,13 +64,15 @@ fun AppNavigation(
         AppRoute.Decrypt.route,
         AppRoute.Sign.route,
         AppRoute.Verify.route,
+        AppRoute.FileTools.route,
         AppRoute.CurveParameters.route,
     )
     val selectedBottomRoute = when (currentRoute) {
         AppRoute.Encrypt.route,
         AppRoute.Decrypt.route,
         AppRoute.Sign.route,
-        AppRoute.Verify.route
+        AppRoute.Verify.route,
+        AppRoute.FileTools.route
         -> AppRoute.Crypto.route
         AppRoute.CurveParameters.route -> AppRoute.Settings.route
         else -> currentRoute
@@ -126,6 +132,16 @@ fun AppNavigation(
                     onUsePublicKeyForVerify = { navController.navigate(AppRoute.Verify.route) },
                     onUsePrivateKeyForDecrypt = { navController.navigate(AppRoute.Decrypt.route) },
                     onUsePrivateKeyForSign = { navController.navigate(AppRoute.Sign.route) },
+                    onLoadProtectedKeyPair = viewModel::loadProtectedKeyPair,
+                    onClearProtectedKeyPair = viewModel::clearProtectedKeyPair,
+                    onPreparePublicKeyExport = viewModel::preparePublicKeyExport,
+                    onPreparePrivateKeyBackup = viewModel::preparePrivateKeyBackup,
+                    onImportKeyPayload = { viewModel.importKeyPayload(context, it) },
+                    onSaveKeyExport = { viewModel.saveKeyExport(context, it) },
+                    onIdentityLabelChange = viewModel::onIdentityLabelChange,
+                    onCreateIdentityProof = viewModel::createPublicKeyIdentityProof,
+                    onVerifyIdentityProof = { viewModel.verifyIdentityProof(context, it) },
+                    onSaveIdentityProof = { viewModel.saveIdentityProof(context, it) },
                 )
             }
             composable(AppRoute.Crypto.route) {
@@ -182,6 +198,26 @@ fun AppNavigation(
                     onVerify = viewModel::verify,
                 )
             }
+            composable(AppRoute.FileTools.route) {
+                val viewModel: FileToolsViewModel = viewModel(factory = factory)
+                val state by viewModel.uiState.collectAsState()
+                FileToolsScreen(
+                    state = state,
+                    onPublicKeyChange = viewModel::onPublicKeyChange,
+                    onPrivateKeyChange = viewModel::onPrivateKeyChange,
+                    onUseLatestPublicKey = viewModel::useLatestPublicKey,
+                    onUseLatestPrivateKey = viewModel::useLatestPrivateKey,
+                    onEncryptFile = { viewModel.encryptFile(context, it) },
+                    onDecryptFile = { viewModel.decryptFile(context, it) },
+                    onSignFile = { viewModel.signFile(context, it) },
+                    onVerifyFileSignature = { fileUri, signatureUri ->
+                        viewModel.verifyFileSignature(context, fileUri, signatureUri)
+                    },
+                    onSaveEncryptedPayload = { viewModel.saveEncryptedPayload(context, it) },
+                    onSaveDecryptedFile = { viewModel.saveDecryptedFile(context, it) },
+                    onSaveSignaturePayload = { viewModel.saveSignaturePayload(context, it) },
+                )
+            }
             composable(AppRoute.CurveParameters.route) {
                 CurveParametersScreen()
             }
@@ -228,6 +264,7 @@ private fun routeTitle(route: String?): String = when (route) {
     AppRoute.Decrypt.route -> AppRoute.Decrypt.title
     AppRoute.Sign.route -> AppRoute.Sign.title
     AppRoute.Verify.route -> AppRoute.Verify.title
+    AppRoute.FileTools.route -> "File Tools"
     AppRoute.CurveParameters.route -> "Curve Parameters"
     AppRoute.History.route -> AppRoute.History.title
     AppRoute.Settings.route -> AppRoute.Settings.title

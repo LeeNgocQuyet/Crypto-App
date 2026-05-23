@@ -27,6 +27,7 @@ class AppContainer(context: Context) {
     val cryptoService: ECCryptoService = RealECCryptoService()
     val cryptoSessionStore = CryptoSessionStore()
     val appSettingsStore = AppSettingsStore()
+    val protectedKeyStore = ProtectedKeyStore(context.applicationContext)
 
     val historyRepository: CryptoHistoryRepository =
         CryptoHistoryRepositoryImpl(database.cryptoHistoryDao())
