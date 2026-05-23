@@ -72,11 +72,13 @@ fun CryptoTextField(
     label: String,
     modifier: Modifier = Modifier,
     minLines: Int = 1,
+    supportingText: String? = null,
 ) {
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         label = { Text(label) },
+        supportingText = supportingText?.let { { Text(it) } },
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = if (minLines > 1) 112.dp else 56.dp),
