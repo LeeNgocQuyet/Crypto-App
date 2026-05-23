@@ -67,6 +67,15 @@ object KeyPayloadCodec {
 
     fun ECPoint.toDisplayKey(): String = "x: $x\ny: $y"
 
+    fun fingerprint(publicKey: String): String = fingerprint(parsePoint(publicKey))
+
+    fun fingerprint(point: ECPoint): String {
+        val bytes = "${point.x}|${point.y}".toByteArray(Charsets.UTF_8)
+        return "0x" + MessageDigest.getInstance("SHA-256")
+            .digest(bytes)
+            .joinToString("") { "%02X".format(it) }
+    }
+
     private fun parsePoint(publicKey: String): ECPoint {
         fun read(label: String): String {
             val regex = Regex("""(?im)^\s*${Regex.escape(label)}\s*:\s*((?:0x)?[0-9a-fA-F]+)\s*$""")
@@ -74,13 +83,6 @@ object KeyPayloadCodec {
                 ?: throw IllegalArgumentException("Public key is missing $label")
         }
         return ECPoint(x = read("x"), y = read("y"))
-    }
-
-    private fun fingerprint(point: ECPoint): String {
-        val bytes = "${point.x}|${point.y}".toByteArray(Charsets.UTF_8)
-        return "0x" + MessageDigest.getInstance("SHA-256")
-            .digest(bytes)
-            .joinToString("") { "%02X".format(it) }
     }
 
     private fun readString(source: String, name: String): String {
