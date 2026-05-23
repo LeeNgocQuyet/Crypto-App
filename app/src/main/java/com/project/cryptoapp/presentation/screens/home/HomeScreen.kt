@@ -66,7 +66,7 @@ fun HomeScreen(
         ),
         DashboardOperation(
             title = "Sign Message",
-            description = "Generate an ECDSA signature r and s.",
+            description = "Generate a deterministic ECDSA signature.",
             icon = Icons.Filled.Create,
             accentColor = CyberSecondary,
             route = AppRoute.Sign,
