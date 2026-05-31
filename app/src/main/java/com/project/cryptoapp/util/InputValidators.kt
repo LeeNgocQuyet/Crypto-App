@@ -1,12 +1,13 @@
 package com.project.cryptoapp.util
 
-import com.project.cryptoapp.domain.crypto.BrainpoolP512r1
+import com.project.cryptoapp.domain.crypto.ActiveCurveRegistry
+import com.project.cryptoapp.domain.crypto.ECCurveMath
+import com.project.cryptoapp.domain.crypto.RuntimeCurvePoint
 import java.math.BigInteger
 
 private val hexRegex = Regex("^(0x)?[0-9a-fA-F]+$")
 private val labeledHexRegex = Regex("""(?im)^\s*%s\s*:\s*((?:0x)?[0-9a-fA-F]+)\s*$""")
 private const val HYBRID_ALGORITHM = "ECDH-HKDF-SHA512-AES-256-GCM"
-private const val CURVE_NAME = "BrainpoolP512r1"
 private const val FIELD_HEX_LENGTH = 128
 private const val SALT_BYTES = 32
 private const val NONCE_BYTES = 12
@@ -15,7 +16,7 @@ private const val TAG_BYTES = 16
 fun validatePrivateKey(value: String): String? = when {
     value.isBlank() -> "Private key is required"
     !value.trim().matches(hexRegex) -> "Private key must be hex, for example 0x1a2b"
-    !isScalarInRange(value) -> "Private key must be in range [1, n - 1] for BrainpoolP512r1"
+    !isScalarInRange(value) -> "Private key must be in range [1, n - 1] for ${ActiveCurveRegistry.current.id}"
     else -> null
 }
 
@@ -25,6 +26,7 @@ fun validatePublicKey(value: String): String? {
     val y = readLabeledHex(value, "y") ?: return "Public key should include y coordinate"
     return validateFieldElement("Public key x", x)
         ?: validateFieldElement("Public key y", y)
+        ?: validatePointOnActiveCurve("Public key", x, y)
 }
 
 fun validateCipherText(value: String): String? {
@@ -35,9 +37,12 @@ fun validateCipherText(value: String): String? {
     return when {
         payload.version != 1 -> "Unsupported ciphertext version: ${payload.version}"
         payload.algorithm != HYBRID_ALGORITHM -> "Unsupported ciphertext algorithm: ${payload.algorithm}"
-        payload.curve != CURVE_NAME -> "Unsupported ciphertext curve: ${payload.curve}"
+        payload.curve != ActiveCurveRegistry.current.id -> "Unsupported ciphertext curve: ${payload.curve}; active curve is ${ActiveCurveRegistry.current.id}"
+        payload.curveFingerprint != null && !payload.curveFingerprint.equals(ActiveCurveRegistry.current.fingerprint, ignoreCase = true) ->
+            "Ciphertext curve fingerprint does not match active curve"
         else -> validateFieldElement("Ephemeral public key x", payload.ephemeralPublicKey.x)
             ?: validateFieldElement("Ephemeral public key y", payload.ephemeralPublicKey.y)
+            ?: validatePointOnActiveCurve("Ephemeral public key", payload.ephemeralPublicKey.x, payload.ephemeralPublicKey.y)
             ?: validateByteHex("salt", payload.salt, SALT_BYTES)
             ?: validateByteHex("nonce", payload.nonce, NONCE_BYTES)
             ?: validateByteHex("aad", payload.aad, expectedBytes = null, allowEmpty = true)
@@ -78,9 +83,15 @@ private fun validateFieldElement(label: String, value: String): String? {
     return when {
         normalized.isBlank() || !value.trim().matches(hexRegex) -> "$label must be hex"
         normalized.length > FIELD_HEX_LENGTH -> "$label must be at most $FIELD_HEX_LENGTH hex characters"
-        BigInteger(normalized, 16) >= BrainpoolP512r1.p -> "$label must be inside Fp"
+        BigInteger(normalized, 16) >= ActiveCurveRegistry.current.p -> "$label must be inside Fp"
         else -> null
     }
+}
+
+private fun validatePointOnActiveCurve(label: String, x: String, y: String): String? {
+    val curve = ActiveCurveRegistry.current
+    val point = RuntimeCurvePoint(BigInteger(x.normalizedHex(), 16), BigInteger(y.normalizedHex(), 16))
+    return if (ECCurveMath(curve).isOnCurve(point)) null else "$label is not on ${curve.id}"
 }
 
 private fun validateByteHex(
@@ -105,7 +116,7 @@ private fun isScalarInRange(value: String): Boolean {
     val normalized = value.normalizedHex()
     if (normalized.isBlank() || !value.trim().matches(hexRegex)) return false
     val scalar = BigInteger(normalized, 16)
-    return scalar >= BigInteger.ONE && scalar < BrainpoolP512r1.n
+    return scalar >= BigInteger.ONE && scalar < ActiveCurveRegistry.current.n
 }
 
 private fun String.normalizedHex(): String =

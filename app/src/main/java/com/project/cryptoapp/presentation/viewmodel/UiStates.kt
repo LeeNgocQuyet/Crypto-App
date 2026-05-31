@@ -1,6 +1,7 @@
 package com.project.cryptoapp.presentation.viewmodel
 
 import com.project.cryptoapp.domain.model.CryptoHistory
+import com.project.cryptoapp.domain.model.ECCurveParams
 
 data class KeyGenerationUiState(
     val privateKey: String = "",
@@ -113,6 +114,14 @@ private fun ByteArray?.contentEqualsNullable(other: ByteArray?): Boolean =
 data class SettingsUiState(
     val enableHistory: Boolean = true,
     val defaultEncoding: String = "Text",
+    val isLoading: Boolean = false,
+    val errorMessage: String? = null,
+    val successMessage: String? = null,
+)
+
+data class CurveParametersUiState(
+    val params: ECCurveParams,
+    val status: String,
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
     val successMessage: String? = null,

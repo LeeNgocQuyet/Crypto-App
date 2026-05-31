@@ -5,10 +5,11 @@ import com.project.cryptoapp.domain.model.ECPoint
 
 object CryptoPayloadCodec {
     fun encode(payload: CipherText, pretty: Boolean = true): String {
-        val fields = listOf(
+        val fields = listOfNotNull(
             "version" to payload.version.toString(),
             "algorithm" to payload.algorithm.quoted(),
             "curve" to payload.curve.quoted(),
+            payload.curveFingerprint?.let { "curveFingerprint" to it.quoted() },
             "ephemeralPublicKey" to encodePoint(payload.ephemeralPublicKey, pretty),
             "salt" to payload.salt.quoted(),
             "nonce" to payload.nonce.quoted(),
@@ -40,6 +41,7 @@ object CryptoPayloadCodec {
             version = version,
             algorithm = algorithm,
             curve = curve,
+            curveFingerprint = readOptionalString(source, "curveFingerprint"),
             ephemeralPublicKey = ephemeralPublicKey,
             salt = readString(source, "salt"),
             nonce = readString(source, "nonce"),
@@ -60,6 +62,11 @@ object CryptoPayloadCodec {
         val regex = Regex(""""${Regex.escape(name)}"\s*:\s*"((?:\\.|[^"\\])*)"""")
         val match = regex.find(source) ?: throw IllegalArgumentException("Ciphertext is missing $name")
         return match.groupValues[1].unescapeJson()
+    }
+
+    private fun readOptionalString(source: String, name: String): String? {
+        val regex = Regex(""""${Regex.escape(name)}"\s*:\s*"((?:\\.|[^"\\])*)"""")
+        return regex.find(source)?.groupValues?.get(1)?.unescapeJson()
     }
 
     private fun readNumber(source: String, name: String): Int? {

@@ -77,6 +77,11 @@ class AppViewModelFactory(
                     appContainer.appSettingsStore,
                 )
 
+            modelClass.isAssignableFrom(CurveParametersViewModel::class.java) ->
+                CurveParametersViewModel(
+                    appContainer.activeCurveRepository,
+                )
+
             else -> throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
         } as T
     }

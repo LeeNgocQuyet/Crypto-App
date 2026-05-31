@@ -13,6 +13,10 @@ data class ECCurveParams(
     val gx: String,
     val gy: String,
     val n: String? = null,
+    val h: String? = null,
+    val curveId: String? = null,
+    val fingerprint: String? = null,
+    val source: String? = null,
 )
 
 data class ECCKeyPair(
@@ -24,6 +28,7 @@ data class CipherText(
     val version: Int = 1,
     val algorithm: String,
     val curve: String,
+    val curveFingerprint: String? = null,
     val ephemeralPublicKey: ECPoint,
     val salt: String,
     val nonce: String,
@@ -57,4 +62,5 @@ data class CryptoHistory(
     val outputText: String,
     val status: OperationStatus,
     val timestamp: Long,
+    val durationNanos: Long? = null,
 )

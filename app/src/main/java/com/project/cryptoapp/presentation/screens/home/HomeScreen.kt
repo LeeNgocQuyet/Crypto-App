@@ -45,7 +45,7 @@ fun HomeScreen(
     val operations = listOf(
         DashboardOperation(
             title = "Generate Keys",
-            description = "Create a BrainpoolP512r1 private/public key pair.",
+            description = "Create a private/public key pair on the active 512-bit curve.",
             icon = Icons.Filled.VpnKey,
             accentColor = CyberPrimary,
             route = AppRoute.Keys,
@@ -140,7 +140,7 @@ private fun HeroCard(modifier: Modifier = Modifier) {
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(
-                text = "BrainpoolP512r1 over Fp - 512-bit",
+                text = "Active ECC curve over Fp - 512-bit",
                 style = MaterialTheme.typography.headlineSmall,
                 color = CyberPrimary,
                 fontWeight = FontWeight.Bold,

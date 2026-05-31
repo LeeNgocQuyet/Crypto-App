@@ -4,6 +4,9 @@ import com.project.cryptoapp.domain.model.ECCurveParams
 import java.math.BigInteger
 
 object BrainpoolP512r1 {
+    const val CURVE_ID = "BrainpoolP512r1"
+    const val FINGERPRINT = "0xBRAINPOOL-P512R1-RFC5639"
+
     val p: BigInteger = hex(
         "AADD9DB8DBE9C48B3FD4E6AE33C9FC07CB308DB3B3C9D20E" +
             "D6639CCA703308717D4D9B009BC66842AECDA12AE6A380E" +
@@ -42,6 +45,24 @@ object BrainpoolP512r1 {
         gx = gx.toHex(),
         gy = gy.toHex(),
         n = n.toHex(),
+        h = BigInteger.ONE.toHex(),
+        curveId = CURVE_ID,
+        fingerprint = FINGERPRINT,
+        source = CurveSource.FALLBACK.label,
+    )
+
+    val spec = ECCurveSpec(
+        id = CURVE_ID,
+        fieldSize = 512,
+        p = p,
+        a = a,
+        b = b,
+        gx = gx,
+        gy = gy,
+        n = n,
+        h = BigInteger.ONE,
+        fingerprint = FINGERPRINT,
+        source = CurveSource.FALLBACK,
     )
 
     private fun hex(value: String): BigInteger = BigInteger(value, 16)

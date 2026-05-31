@@ -47,9 +47,10 @@ import com.project.cryptoapp.presentation.theme.CyberSurfaceVariant
 import com.project.cryptoapp.presentation.theme.CyberTertiary
 import com.project.cryptoapp.presentation.theme.CyberTextSecondary
 import com.project.cryptoapp.presentation.viewmodel.HistoryUiState
-import com.project.cryptoapp.util.toReadableDateTime
 import com.project.cryptoapp.util.toJsonExport
 import com.project.cryptoapp.util.toPlainTextExport
+import com.project.cryptoapp.util.toDurationDisplay
+import com.project.cryptoapp.util.toReadableDateTime
 
 @Composable
 fun HistoryScreen(
@@ -87,6 +88,9 @@ fun HistoryScreen(
             selectedFilter = selectedStatusFilter,
             onFilterSelected = { selectedStatusFilter = it },
         )
+        if (!state.isLoading && filteredHistory.any { it.durationNanos != null }) {
+            DurationStatisticsCard(filteredHistory)
+        }
         when {
             state.isLoading -> CircularProgressIndicator(color = CyberPrimary)
             state.history.isEmpty() -> EmptyHistoryState()
@@ -107,6 +111,55 @@ fun HistoryScreen(
                         onDelete = { onDeleteHistoryItem(item.id) },
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DurationStatisticsCard(history: List<CryptoHistory>) {
+    val statistics = OperationType.entries.mapNotNull { operationType ->
+        val durations = history
+            .filter { it.operationType == operationType }
+            .mapNotNull { it.durationNanos }
+        if (durations.isEmpty()) {
+            null
+        } else {
+            DurationStatistics(
+                operationType = operationType,
+                count = durations.size,
+                averageNanos = durations.average().toLong(),
+                minimumNanos = durations.min(),
+                maximumNanos = durations.max(),
+            )
+        }
+    }
+
+    CryptoCard {
+        Text(
+            text = "Processing Time Statistics",
+            style = MaterialTheme.typography.titleMedium,
+            color = CyberPrimary,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            text = "Measured runs shown by the active filters. File operations include file read and hashing.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        statistics.forEach { stats ->
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = "${stats.operationType.displayName()} (${stats.count})",
+                    color = stats.operationType.accentColor(),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "Avg ${stats.averageNanos.toDurationDisplay()} | Min ${stats.minimumNanos.toDurationDisplay()} | Max ${stats.maximumNanos.toDurationDisplay()}",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
         }
     }
@@ -266,6 +319,14 @@ private fun CompactHistoryItem(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelSmall,
             )
+            item.durationNanos?.let { durationNanos ->
+                Text(
+                    text = "Processing time: ${durationNanos.toDurationDisplay()}",
+                    color = accentColor,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
             Text(
                 text = item.outputText.compactOutput(),
                 maxLines = 2,
@@ -363,6 +424,14 @@ private enum class StatusFilter(
     Success("Success", "SUCCESS"),
     Failed("Failed", "FAILED"),
 }
+
+private data class DurationStatistics(
+    val operationType: OperationType,
+    val count: Int,
+    val averageNanos: Long,
+    val minimumNanos: Long,
+    val maximumNanos: Long,
+)
 
 private fun OperationType.displayName(): String = when (this) {
     OperationType.KEY_GENERATION -> "Key Generation"

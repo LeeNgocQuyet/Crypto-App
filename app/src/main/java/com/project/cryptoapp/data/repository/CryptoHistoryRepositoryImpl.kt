@@ -35,6 +35,7 @@ private fun CryptoHistoryEntity.toDomain() = CryptoHistory(
     outputText = outputText,
     status = OperationStatus.valueOf(status),
     timestamp = timestamp,
+    durationNanos = durationNanos,
 )
 
 private fun CryptoHistory.toEntity() = CryptoHistoryEntity(
@@ -44,4 +45,5 @@ private fun CryptoHistory.toEntity() = CryptoHistoryEntity(
     outputText = outputText,
     status = status.name,
     timestamp = timestamp,
+    durationNanos = durationNanos,
 )

@@ -51,7 +51,7 @@ fun EncryptScreen(
             onValueChange = onPublicKeyChange,
             label = "Recipient public key Q(x, y)",
             minLines = 3,
-            supportingText = "Use the receiver's BrainpoolP512r1 public key.",
+            supportingText = "Use the receiver's public key from the active 512-bit curve.",
         )
         CryptoTextField(
             value = state.aad,

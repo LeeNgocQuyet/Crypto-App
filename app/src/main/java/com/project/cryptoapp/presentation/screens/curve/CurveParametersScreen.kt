@@ -21,21 +21,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.project.cryptoapp.domain.crypto.BrainpoolP512r1
-import com.project.cryptoapp.domain.model.ECCurveParams
 import com.project.cryptoapp.presentation.components.CopyTextButton
+import com.project.cryptoapp.presentation.components.CryptoButton
 import com.project.cryptoapp.presentation.components.CryptoCard
 import com.project.cryptoapp.presentation.components.SectionHeader
 import com.project.cryptoapp.presentation.theme.CyberPrimary
 import com.project.cryptoapp.presentation.theme.CyberSecondary
 import com.project.cryptoapp.presentation.theme.CyberTertiary
+import com.project.cryptoapp.presentation.viewmodel.CurveParametersUiState
 import com.project.cryptoapp.util.toDisplayString
 
 @Composable
 fun CurveParametersScreen(
+    state: CurveParametersUiState,
+    onRefreshCurve: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val params = demoCurveParams()
+    val params = state.params
 
     Column(
         modifier = modifier
@@ -44,12 +46,19 @@ fun CurveParametersScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         CryptoCard {
-            SectionHeader("BrainpoolP512r1 over Fp - 512-bit")
+            SectionHeader("${params.curveId.orEmpty()} over Fp - 512-bit")
             Text(
-                text = "The app now uses these fixed BrainpoolP512r1 parameters for key generation, encryption, decryption, signing and verification.",
+                text = "Source: ${params.source.orEmpty()}\nStatus: ${state.status}\nFingerprint: ${params.fingerprint.orEmpty()}",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium,
             )
+            state.errorMessage?.let {
+                Text(text = it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+            state.successMessage?.let {
+                Text(text = it, color = CyberPrimary, style = MaterialTheme.typography.bodySmall)
+            }
+            CryptoButton("Refresh From Server", onClick = onRefreshCurve, isLoading = state.isLoading)
             CopyTextButton(text = params.toDisplayString(), label = "Copy All")
         }
 
@@ -59,6 +68,7 @@ fun CurveParametersScreen(
         CurveParamCard("Gx", "Base point x-coordinate", params.gx, Color(0xFF70E1F5))
         CurveParamCard("Gy", "Base point y-coordinate", params.gy, Color(0xFFFFC857))
         CurveParamCard("n", "Base point order", params.n.orEmpty(), Color(0xFFFF6B9A))
+        CurveParamCard("h", "Cofactor", params.h.orEmpty(), Color(0xFFB28DFF))
     }
 }
 
@@ -111,5 +121,3 @@ private fun CurveParamCard(
         }
     }
 }
-
-private fun demoCurveParams(): ECCurveParams = BrainpoolP512r1.params

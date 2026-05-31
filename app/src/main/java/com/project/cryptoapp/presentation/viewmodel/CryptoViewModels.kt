@@ -2,9 +2,12 @@ package com.project.cryptoapp.presentation.viewmodel
 
 import android.content.Context
 import android.net.Uri
+import android.os.SystemClock
 import android.provider.OpenableColumns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.project.cryptoapp.data.repository.ActiveCurveRepository
+import com.project.cryptoapp.domain.crypto.ActiveCurveRegistry
 import com.project.cryptoapp.domain.model.CryptoHistory
 import com.project.cryptoapp.domain.model.DigitalSignature
 import com.project.cryptoapp.domain.model.OperationStatus
@@ -60,7 +63,8 @@ class KeyGenerationViewModel(
     fun generateKeyPair() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
-            runCatching { generateKeyPairUseCase() }
+            val measured = measureOperation { generateKeyPairUseCase() }
+            measured.result
                 .onSuccess { keyPair ->
                     val publicKey = keyPair.publicKey.toDisplayString()
                     sessionStore.setKeyPair(
@@ -82,14 +86,24 @@ class KeyGenerationViewModel(
                     }
                     saveHistory(
                         OperationType.KEY_GENERATION,
-                        "Generate BrainpoolP512r1 key pair",
+                        "Generate ${ActiveCurveRegistry.current.id} key pair",
                         "Public key generated; private key protected by Android Keystore",
+                        OperationStatus.SUCCESS,
+                        measured.durationNanos,
                     )
                 }
                 .onFailure { error ->
+                    val message = error.message ?: "Key generation failed"
                     _uiState.update {
-                        it.copy(isLoading = false, errorMessage = error.message ?: "Key generation failed")
+                        it.copy(isLoading = false, errorMessage = message)
                     }
+                    saveHistory(
+                        OperationType.KEY_GENERATION,
+                        "Generate ${ActiveCurveRegistry.current.id} key pair",
+                        message,
+                        OperationStatus.FAILED,
+                        measured.durationNanos,
+                    )
                 }
         }
     }
@@ -183,7 +197,9 @@ class KeyGenerationViewModel(
             runCatching {
                 val payload = KeyPayloadCodec.decode(context.readText(uri))
                 require(payload.version == 1) { "Unsupported key payload version: ${payload.version}" }
-                require(payload.curve == "BrainpoolP512r1") { "Unsupported key curve: ${payload.curve}" }
+                require(payload.curve == ActiveCurveRegistry.current.id) {
+                    "Unsupported key curve: ${payload.curve}; active curve is ${ActiveCurveRegistry.current.id}"
+                }
                 val publicKey = with(KeyPayloadCodec) { payload.publicKey.toDisplayKey() }
                 validatePublicKey(publicKey)?.let { throw IllegalArgumentException(it) }
                 val privateKey = payload.privateKey.orEmpty()
@@ -230,12 +246,13 @@ class KeyGenerationViewModel(
         }
 
         viewModelScope.launch {
-            runCatching {
+            val measured = measureOperation {
                 val keyPayload = KeyPayloadCodec.publicKeyPayload(state.publicKey)
                 val message = PublicKeyIdentityCodec.messageToSign(label, keyPayload.fingerprint)
                 val signature = signMessageUseCase(message, state.privateKey)
                 PublicKeyIdentityCodec.encode(
                     PublicKeyIdentityProof(
+                        curve = ActiveCurveRegistry.current.id,
                         label = label,
                         publicKey = keyPayload.publicKey,
                         fingerprint = keyPayload.fingerprint,
@@ -243,6 +260,7 @@ class KeyGenerationViewModel(
                     ),
                 )
             }
+            measured.result
                 .onSuccess { proof ->
                     _uiState.update {
                         it.copy(
@@ -252,20 +270,37 @@ class KeyGenerationViewModel(
                             successMessage = "Public key identity proof created",
                         )
                     }
+                    saveHistory(
+                        OperationType.SIGN,
+                        "Public key identity proof",
+                        "Identity proof signature generated",
+                        OperationStatus.SUCCESS,
+                        measured.durationNanos,
+                    )
                 }
                 .onFailure { error ->
-                    _uiState.update { it.copy(errorMessage = error.message ?: "Unable to create identity proof") }
+                    val message = error.message ?: "Unable to create identity proof"
+                    _uiState.update { it.copy(errorMessage = message) }
+                    saveHistory(
+                        OperationType.SIGN,
+                        "Public key identity proof",
+                        message,
+                        OperationStatus.FAILED,
+                        measured.durationNanos,
+                    )
                 }
         }
     }
 
     fun verifyIdentityProof(context: Context, uri: Uri) {
         viewModelScope.launch {
-            runCatching {
+            val measured = measureOperation {
                 val proof = PublicKeyIdentityCodec.decode(context.readText(uri))
                 require(proof.version == 1) { "Unsupported identity proof version: ${proof.version}" }
                 require(proof.type == "public-key-identity-proof") { "Unsupported identity proof type: ${proof.type}" }
-                require(proof.curve == "BrainpoolP512r1") { "Unsupported curve: ${proof.curve}" }
+                require(proof.curve == ActiveCurveRegistry.current.id) {
+                    "Unsupported curve: ${proof.curve}; active curve is ${ActiveCurveRegistry.current.id}"
+                }
                 val publicKey = with(KeyPayloadCodec) { proof.publicKey.toDisplayKey() }
                 validatePublicKey(publicKey)?.let { throw IllegalArgumentException(it) }
                 val expectedFingerprint = KeyPayloadCodec.fingerprint(publicKey)
@@ -277,6 +312,7 @@ class KeyGenerationViewModel(
                 require(valid) { "Identity proof signature is invalid" }
                 proof to publicKey
             }
+            measured.result
                 .onSuccess { (proof, publicKey) ->
                     sessionStore.setKeyPair(sessionStore.state.value.privateKey, publicKey)
                     _uiState.update {
@@ -287,14 +323,29 @@ class KeyGenerationViewModel(
                             successMessage = "Public key identity proof verified",
                         )
                     }
+                    saveHistory(
+                        OperationType.VERIFY,
+                        "Public key identity proof",
+                        "Identity proof signature verified",
+                        OperationStatus.SUCCESS,
+                        measured.durationNanos,
+                    )
                 }
                 .onFailure { error ->
+                    val message = error.message ?: "Unable to verify identity proof"
                     _uiState.update {
                         it.copy(
                             publicKeyAuthResult = "Public key authentication failed",
-                            errorMessage = error.message ?: "Unable to verify identity proof",
+                            errorMessage = message,
                         )
                     }
+                    saveHistory(
+                        OperationType.VERIFY,
+                        "Public key identity proof",
+                        message,
+                        OperationStatus.FAILED,
+                        measured.durationNanos,
+                    )
                 }
         }
     }
@@ -313,15 +364,22 @@ class KeyGenerationViewModel(
             ?: throw IllegalArgumentException("Unable to write key file")
     }
 
-    private suspend fun saveHistory(type: OperationType, input: String, output: String) {
+    private suspend fun saveHistory(
+        type: OperationType,
+        input: String,
+        output: String,
+        status: OperationStatus,
+        durationNanos: Long,
+    ) {
         if (!settingsStore.state.value.saveHistory) return
         saveHistoryUseCase(
             CryptoHistory(
                 operationType = type,
                 inputText = input,
                 outputText = output,
-                status = OperationStatus.SUCCESS,
+                status = status,
                 timestamp = System.currentTimeMillis(),
+                durationNanos = durationNanos,
             ),
         )
     }
@@ -371,10 +429,11 @@ class EncryptViewModel(
 
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
-            runCatching {
+            val measured = measureOperation {
                 encryptMessageUseCase(state.plaintext, state.publicKey, state.aad)
                     .toDisplayString(pretty = state.outputFormat == "Pretty JSON")
             }
+            measured.result
                 .onSuccess { output ->
                     sessionStore.setCipherText(output)
                     _uiState.update {
@@ -385,6 +444,7 @@ class EncryptViewModel(
                         "Hybrid encrypt (${state.plaintext.length} chars)",
                         "Hybrid ciphertext generated (${output.length} chars)",
                         OperationStatus.SUCCESS,
+                        measured.durationNanos,
                     )
                 }
                 .onFailure { error ->
@@ -395,6 +455,7 @@ class EncryptViewModel(
                         "Hybrid encrypt (${state.plaintext.length} chars)",
                         message,
                         OperationStatus.FAILED,
+                        measured.durationNanos,
                     )
                 }
         }
@@ -405,9 +466,10 @@ class EncryptViewModel(
         input: String,
         output: String,
         status: OperationStatus,
+        durationNanos: Long,
     ) {
         if (!settingsStore.state.value.saveHistory) return
-        saveHistoryUseCase(CryptoHistory(operationType = type, inputText = input, outputText = output, status = status, timestamp = System.currentTimeMillis()))
+        saveHistoryUseCase(CryptoHistory(operationType = type, inputText = input, outputText = output, status = status, timestamp = System.currentTimeMillis(), durationNanos = durationNanos))
     }
 }
 
@@ -464,7 +526,8 @@ class DecryptViewModel(
 
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
-            runCatching { decryptMessageUseCase(state.cipherText, state.privateKey, state.aad) }
+            val measured = measureOperation { decryptMessageUseCase(state.cipherText, state.privateKey, state.aad) }
+            measured.result
                 .onSuccess { output ->
                     _uiState.update {
                         it.copy(plaintext = output, isLoading = false, successMessage = "Ciphertext decrypted")
@@ -474,19 +537,20 @@ class DecryptViewModel(
                         "Hybrid ciphertext JSON",
                         "Plaintext recovered (${output.length} chars)",
                         OperationStatus.SUCCESS,
+                        measured.durationNanos,
                     )
                 }
                 .onFailure { error ->
                     val message = error.message ?: "Decryption failed"
                     _uiState.update { it.copy(isLoading = false, errorMessage = message) }
-                    saveHistory(OperationType.DECRYPT, "Hybrid ciphertext JSON", message, OperationStatus.FAILED)
+                    saveHistory(OperationType.DECRYPT, "Hybrid ciphertext JSON", message, OperationStatus.FAILED, measured.durationNanos)
                 }
         }
     }
 
-    private suspend fun saveHistory(type: OperationType, input: String, output: String, status: OperationStatus) {
+    private suspend fun saveHistory(type: OperationType, input: String, output: String, status: OperationStatus, durationNanos: Long) {
         if (!settingsStore.state.value.saveHistory) return
-        saveHistoryUseCase(CryptoHistory(operationType = type, inputText = input, outputText = output, status = status, timestamp = System.currentTimeMillis()))
+        saveHistoryUseCase(CryptoHistory(operationType = type, inputText = input, outputText = output, status = status, timestamp = System.currentTimeMillis(), durationNanos = durationNanos))
     }
 }
 
@@ -531,7 +595,8 @@ class SignViewModel(
 
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
-            runCatching { signMessageUseCase(state.message, state.privateKey) }
+            val measured = measureOperation { signMessageUseCase(state.message, state.privateKey) }
+            measured.result
                 .onSuccess { signature ->
                     val output = signature.toDisplayString()
                     sessionStore.setSignature(signature.r, signature.s)
@@ -543,6 +608,7 @@ class SignViewModel(
                         "Message signing (${state.message.length} chars)",
                         "Deterministic ECDSA signature generated",
                         OperationStatus.SUCCESS,
+                        measured.durationNanos,
                     )
                 }
                 .onFailure { error ->
@@ -553,14 +619,15 @@ class SignViewModel(
                         "Message signing (${state.message.length} chars)",
                         message,
                         OperationStatus.FAILED,
+                        measured.durationNanos,
                     )
                 }
         }
     }
 
-    private suspend fun saveHistory(type: OperationType, input: String, output: String, status: OperationStatus) {
+    private suspend fun saveHistory(type: OperationType, input: String, output: String, status: OperationStatus, durationNanos: Long) {
         if (!settingsStore.state.value.saveHistory) return
-        saveHistoryUseCase(CryptoHistory(operationType = type, inputText = input, outputText = output, status = status, timestamp = System.currentTimeMillis()))
+        saveHistoryUseCase(CryptoHistory(operationType = type, inputText = input, outputText = output, status = status, timestamp = System.currentTimeMillis(), durationNanos = durationNanos))
     }
 }
 
@@ -630,7 +697,8 @@ class VerifyViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
             val signature = DigitalSignature(state.signatureR, state.signatureS)
-            runCatching { verifySignatureUseCase(state.message, state.publicKey, signature) }
+            val measured = measureOperation { verifySignatureUseCase(state.message, state.publicKey, signature) }
+            measured.result
                 .onSuccess { isValid ->
                     val output = if (isValid) "Signature is valid" else "Signature is invalid"
                     _uiState.update {
@@ -645,6 +713,7 @@ class VerifyViewModel(
                         "Signature verification (${state.message.length} chars)",
                         output,
                         OperationStatus.SUCCESS,
+                        measured.durationNanos,
                     )
                 }
                 .onFailure { error ->
@@ -655,14 +724,15 @@ class VerifyViewModel(
                         "Signature verification (${state.message.length} chars)",
                         message,
                         OperationStatus.FAILED,
+                        measured.durationNanos,
                     )
                 }
         }
     }
 
-    private suspend fun saveHistory(type: OperationType, input: String, output: String, status: OperationStatus) {
+    private suspend fun saveHistory(type: OperationType, input: String, output: String, status: OperationStatus, durationNanos: Long) {
         if (!settingsStore.state.value.saveHistory) return
-        saveHistoryUseCase(CryptoHistory(operationType = type, inputText = input, outputText = output, status = status, timestamp = System.currentTimeMillis()))
+        saveHistoryUseCase(CryptoHistory(operationType = type, inputText = input, outputText = output, status = status, timestamp = System.currentTimeMillis(), durationNanos = durationNanos))
     }
 }
 
@@ -714,12 +784,13 @@ class FileToolsViewModel(
 
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
-            runCatching {
+            val measured = measureOperation {
                 val bytes = context.readBytes(uri)
                 val name = context.displayName(uri)
                 encryptMessageUseCase(bytes.toHexPayload(), publicKey, "fileName=$name")
                     .toDisplayString(pretty = true)
             }
+            measured.result
                 .onSuccess { payload ->
                     _uiState.update {
                         it.copy(
@@ -728,12 +799,12 @@ class FileToolsViewModel(
                             successMessage = "File encrypted to hybrid JSON",
                         )
                     }
-                    saveHistory(OperationType.ENCRYPT, "File encryption", "Encrypted file payload generated", OperationStatus.SUCCESS)
+                    saveHistory(OperationType.ENCRYPT, "File encryption", "Encrypted file payload generated", OperationStatus.SUCCESS, measured.durationNanos)
                 }
                 .onFailure { error ->
                     val message = error.message ?: "File encryption failed"
                     _uiState.update { it.copy(isLoading = false, errorMessage = message) }
-                    saveHistory(OperationType.ENCRYPT, "File encryption", message, OperationStatus.FAILED)
+                    saveHistory(OperationType.ENCRYPT, "File encryption", message, OperationStatus.FAILED, measured.durationNanos)
                 }
         }
     }
@@ -748,10 +819,11 @@ class FileToolsViewModel(
 
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
-            runCatching {
+            val measured = measureOperation {
                 val payload = context.readText(uri)
                 decryptMessageUseCase(payload, privateKey).toPayloadBytes()
             }
+            measured.result
                 .onSuccess { bytes ->
                     _uiState.update {
                         it.copy(
@@ -760,12 +832,12 @@ class FileToolsViewModel(
                             successMessage = "File decrypted and ready to save",
                         )
                     }
-                    saveHistory(OperationType.DECRYPT, "File decryption", "Decrypted file bytes recovered", OperationStatus.SUCCESS)
+                    saveHistory(OperationType.DECRYPT, "File decryption", "Decrypted file bytes recovered", OperationStatus.SUCCESS, measured.durationNanos)
                 }
                 .onFailure { error ->
                     val message = error.message ?: "File decryption failed"
                     _uiState.update { it.copy(isLoading = false, errorMessage = message) }
-                    saveHistory(OperationType.DECRYPT, "File decryption", message, OperationStatus.FAILED)
+                    saveHistory(OperationType.DECRYPT, "File decryption", message, OperationStatus.FAILED, measured.durationNanos)
                 }
         }
     }
@@ -780,18 +852,20 @@ class FileToolsViewModel(
 
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
-            runCatching {
+            val measured = measureOperation {
                 val bytes = context.readBytes(uri)
                 val fileHash = bytes.sha512HexPayload()
                 val signature = signMessageUseCase(fileHash, privateKey)
                 FileSignatureCodec.encode(
                     FileSignaturePayload(
+                        curve = ActiveCurveRegistry.current.id,
                         fileName = context.displayName(uri),
                         sha512 = fileHash,
                         signature = signature,
                     ),
                 )
             }
+            measured.result
                 .onSuccess { signaturePayload ->
                     _uiState.update {
                         it.copy(
@@ -800,12 +874,12 @@ class FileToolsViewModel(
                             successMessage = "File signature generated",
                         )
                     }
-                    saveHistory(OperationType.SIGN, "File signing", "File SHA-512 signature generated", OperationStatus.SUCCESS)
+                    saveHistory(OperationType.SIGN, "File signing", "File SHA-512 signature generated", OperationStatus.SUCCESS, measured.durationNanos)
                 }
                 .onFailure { error ->
                     val message = error.message ?: "File signing failed"
                     _uiState.update { it.copy(isLoading = false, errorMessage = message) }
-                    saveHistory(OperationType.SIGN, "File signing", message, OperationStatus.FAILED)
+                    saveHistory(OperationType.SIGN, "File signing", message, OperationStatus.FAILED, measured.durationNanos)
                 }
         }
     }
@@ -820,13 +894,17 @@ class FileToolsViewModel(
 
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
-            runCatching {
+            val measured = measureOperation {
                 val fileHash = context.readBytes(fileUri).sha512HexPayload()
                 val signaturePayload = FileSignatureCodec.decode(context.readText(signatureUri))
+                require(signaturePayload.curve == ActiveCurveRegistry.current.id) {
+                    "Unsupported signature curve: ${signaturePayload.curve}; active curve is ${ActiveCurveRegistry.current.id}"
+                }
                 val hashMatches = signaturePayload.sha512.equals(fileHash, ignoreCase = true)
                 val signatureValid = verifySignatureUseCase(fileHash, publicKey, signaturePayload.signature)
                 hashMatches && signatureValid
             }
+            measured.result
                 .onSuccess { isValid ->
                     val output = if (isValid) "File signature is valid" else "File signature is invalid"
                     _uiState.update {
@@ -836,12 +914,12 @@ class FileToolsViewModel(
                             successMessage = output,
                         )
                     }
-                    saveHistory(OperationType.VERIFY, "File signature verification", output, OperationStatus.SUCCESS)
+                    saveHistory(OperationType.VERIFY, "File signature verification", output, OperationStatus.SUCCESS, measured.durationNanos)
                 }
                 .onFailure { error ->
                     val message = error.message ?: "File signature verification failed"
                     _uiState.update { it.copy(isLoading = false, errorMessage = message) }
-                    saveHistory(OperationType.VERIFY, "File signature verification", message, OperationStatus.FAILED)
+                    saveHistory(OperationType.VERIFY, "File signature verification", message, OperationStatus.FAILED, measured.durationNanos)
                 }
         }
     }
@@ -867,6 +945,7 @@ class FileToolsViewModel(
         input: String,
         output: String,
         status: OperationStatus,
+        durationNanos: Long,
     ) {
         if (!settingsStore.state.value.saveHistory) return
         saveHistoryUseCase(
@@ -876,6 +955,7 @@ class FileToolsViewModel(
                 outputText = output,
                 status = status,
                 timestamp = System.currentTimeMillis(),
+                durationNanos = durationNanos,
             ),
         )
     }
@@ -1033,4 +1113,68 @@ class SettingsViewModel(
                 }
         }
     }
+}
+
+class CurveParametersViewModel(
+    private val activeCurveRepository: ActiveCurveRepository,
+) : ViewModel() {
+    private val _uiState = MutableStateFlow(
+        CurveParametersUiState(
+            params = activeCurveRepository.state.value.curve.toParams(),
+            status = activeCurveRepository.state.value.status,
+        ),
+    )
+    val uiState: StateFlow<CurveParametersUiState> = _uiState.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            activeCurveRepository.state.collect { runtimeState ->
+                _uiState.update {
+                    it.copy(
+                        params = runtimeState.curve.toParams(),
+                        status = runtimeState.status,
+                        isLoading = false,
+                    )
+                }
+            }
+        }
+    }
+
+    fun refreshCurve() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
+            runCatching { activeCurveRepository.refreshFromServer() }
+                .onSuccess { curve ->
+                    _uiState.update {
+                        it.copy(
+                            params = curve.toParams(),
+                            isLoading = false,
+                            successMessage = "Active curve: ${curve.id}",
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = error.message ?: "Unable to refresh curve",
+                        )
+                    }
+                }
+        }
+    }
+}
+
+private data class MeasuredResult<T>(
+    val result: Result<T>,
+    val durationNanos: Long,
+)
+
+private inline fun <T> measureOperation(block: () -> T): MeasuredResult<T> {
+    val startedAt = SystemClock.elapsedRealtimeNanos()
+    val result = runCatching(block)
+    return MeasuredResult(
+        result = result,
+        durationNanos = SystemClock.elapsedRealtimeNanos() - startedAt,
+    )
 }

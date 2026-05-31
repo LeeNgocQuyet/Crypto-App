@@ -37,6 +37,7 @@ import com.project.cryptoapp.presentation.screens.settings.SettingsScreen
 import com.project.cryptoapp.presentation.screens.sign.SignScreen
 import com.project.cryptoapp.presentation.screens.verify.VerifyScreen
 import com.project.cryptoapp.presentation.viewmodel.AppViewModelFactory
+import com.project.cryptoapp.presentation.viewmodel.CurveParametersViewModel
 import com.project.cryptoapp.presentation.viewmodel.DecryptViewModel
 import com.project.cryptoapp.presentation.viewmodel.EncryptViewModel
 import com.project.cryptoapp.presentation.viewmodel.FileToolsViewModel
@@ -219,7 +220,12 @@ fun AppNavigation(
                 )
             }
             composable(AppRoute.CurveParameters.route) {
-                CurveParametersScreen()
+                val viewModel: CurveParametersViewModel = viewModel(factory = factory)
+                val state by viewModel.uiState.collectAsState()
+                CurveParametersScreen(
+                    state = state,
+                    onRefreshCurve = viewModel::refreshCurve,
+                )
             }
             composable(AppRoute.History.route) {
                 val viewModel: HistoryViewModel = viewModel(factory = factory)

@@ -3,6 +3,7 @@ package com.project.cryptoapp.util
 import android.content.Context
 import androidx.room.Room
 import com.project.cryptoapp.data.local.database.AppDatabase
+import com.project.cryptoapp.data.repository.ActiveCurveRepository
 import com.project.cryptoapp.data.repository.CryptoHistoryRepositoryImpl
 import com.project.cryptoapp.data.repository.RealECCryptoService
 import com.project.cryptoapp.domain.crypto.ECCryptoService
@@ -22,9 +23,10 @@ class AppContainer(context: Context) {
         context.applicationContext,
         AppDatabase::class.java,
         "ecc512_crypto.db",
-    ).build()
+    ).addMigrations(AppDatabase.MIGRATION_1_2).build()
 
-    val cryptoService: ECCryptoService = RealECCryptoService()
+    val activeCurveRepository = ActiveCurveRepository(context.applicationContext)
+    val cryptoService: ECCryptoService = RealECCryptoService(activeCurveRepository)
     val cryptoSessionStore = CryptoSessionStore()
     val appSettingsStore = AppSettingsStore()
     val protectedKeyStore = ProtectedKeyStore(context.applicationContext)

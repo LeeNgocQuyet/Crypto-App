@@ -1,11 +1,12 @@
 package com.project.cryptoapp.util
 
+import com.project.cryptoapp.domain.crypto.ActiveCurveRegistry
 import com.project.cryptoapp.domain.model.DigitalSignature
 
 data class FileSignaturePayload(
     val version: Int = 1,
     val algorithm: String = "deterministic-ECDSA-SHA512",
-    val curve: String = "BrainpoolP512r1",
+    val curve: String = ActiveCurveRegistry.current.id,
     val fileName: String,
     val sha512: String,
     val signature: DigitalSignature,

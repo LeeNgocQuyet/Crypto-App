@@ -1,7 +1,10 @@
 package com.project.cryptoapp.data.repository
 
-import com.project.cryptoapp.domain.crypto.BrainpoolP512r1
+import com.project.cryptoapp.domain.crypto.ActiveCurveRegistry
 import com.project.cryptoapp.domain.crypto.ECCryptoService
+import com.project.cryptoapp.domain.crypto.ECCurveMath
+import com.project.cryptoapp.domain.crypto.ECCurveSpec
+import com.project.cryptoapp.domain.crypto.RuntimeCurvePoint
 import com.project.cryptoapp.domain.crypto.toHex
 import com.project.cryptoapp.domain.model.CipherText
 import com.project.cryptoapp.domain.model.DigitalSignature
@@ -19,36 +22,42 @@ import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 class RealECCryptoService(
+    private val activeCurveRepository: ActiveCurveRepository? = null,
     private val secureRandom: SecureRandom = SecureRandom(),
 ) : ECCryptoService {
     override suspend fun generateKeyPair(): ECCKeyPair {
-        val privateKey = randomScalar()
-        val publicKey = multiply(privateKey, BASE_POINT).toDomainPoint()
+        val curve = activeCurve()
+        val math = ECCurveMath(curve)
+        val privateKey = randomScalar(curve)
+        val publicKey = math.multiply(privateKey, curve.basePoint.toRuntimePoint()).toDomainPoint(curve)
         return ECCKeyPair(
-            privateKey = privateKey.toHex(),
+            privateKey = privateKey.toHex(curve.scalarHexWidth()),
             publicKey = publicKey,
         )
     }
 
     override suspend fun encrypt(plaintext: String, publicKey: String, aad: String): CipherText {
+        val curve = activeCurve()
+        val math = ECCurveMath(curve)
         val recipientPublicKey = parsePublicKey(publicKey)
-        requirePointOnCurve(recipientPublicKey, "Public key")
+        math.requirePointOnCurve(recipientPublicKey, "Public key")
 
-        val ephemeralPrivateKey = randomScalar()
-        val ephemeralPublicKey = multiply(ephemeralPrivateKey, BASE_POINT)
-        val sharedSecret = multiply(ephemeralPrivateKey, recipientPublicKey)
+        val ephemeralPrivateKey = randomScalar(curve)
+        val ephemeralPublicKey = math.multiply(ephemeralPrivateKey, curve.basePoint.toRuntimePoint())
+        val sharedSecret = math.multiply(ephemeralPrivateKey, recipientPublicKey)
         require(!sharedSecret.isInfinity) { "ECDH shared secret is invalid" }
 
         val salt = randomBytes(SALT_BYTES)
         val nonce = randomBytes(GCM_NONCE_BYTES)
         val aadBytes = decodeInputPayload(aad)
-        val key = deriveAesKey(sharedSecret, salt)
+        val key = deriveAesKey(curve, sharedSecret, salt)
         val encrypted = aesGcmEncrypt(key, nonce, decodeInputPayload(plaintext), aadBytes)
 
         return CipherText(
             algorithm = ALGORITHM,
-            curve = CURVE_NAME,
-            ephemeralPublicKey = ephemeralPublicKey.toDomainPoint(),
+            curve = curve.id,
+            curveFingerprint = curve.fingerprint,
+            ephemeralPublicKey = ephemeralPublicKey.toDomainPoint(curve),
             salt = salt.toHexString(),
             nonce = nonce.toHexString(),
             aad = aadBytes.toHexString(),
@@ -58,18 +67,23 @@ class RealECCryptoService(
     }
 
     override suspend fun decrypt(cipherText: String, privateKey: String, aad: String): String {
-        val secret = parsePrivateKey(privateKey)
+        val curve = activeCurve()
+        val math = ECCurveMath(curve)
+        val secret = parsePrivateKey(curve, privateKey)
         val payload = CryptoPayloadCodec.decode(cipherText)
         require(payload.algorithm == ALGORITHM) { "Unsupported algorithm: ${payload.algorithm}" }
-        require(payload.curve == CURVE_NAME) { "Unsupported curve: ${payload.curve}" }
+        require(payload.curve == curve.id) { "Unsupported curve: ${payload.curve}; active curve is ${curve.id}" }
+        payload.curveFingerprint?.let {
+            require(it.equals(curve.fingerprint, ignoreCase = true)) { "Curve fingerprint does not match active curve" }
+        }
 
-        val ephemeralPublicKey = CurvePoint(
+        val ephemeralPublicKey = RuntimeCurvePoint(
             x = parseHex(payload.ephemeralPublicKey.x, "ephemeralPublicKey.x"),
             y = parseHex(payload.ephemeralPublicKey.y, "ephemeralPublicKey.y"),
         )
-        requirePointOnCurve(ephemeralPublicKey, "Ephemeral public key")
+        math.requirePointOnCurve(ephemeralPublicKey, "Ephemeral public key")
 
-        val sharedSecret = multiply(secret, ephemeralPublicKey)
+        val sharedSecret = math.multiply(secret, ephemeralPublicKey)
         require(!sharedSecret.isInfinity) { "ECDH shared secret is invalid" }
 
         val salt = parseHexBytes(payload.salt, "salt")
@@ -77,29 +91,34 @@ class RealECCryptoService(
         val aadBytes = if (aad.isBlank()) parseHexBytes(payload.aad, "aad") else decodeInputPayload(aad)
         val encryptedBytes = parseHexBytes(payload.cipherText, "ciphertext")
         val tag = parseHexBytes(payload.tag, "tag")
-        val key = deriveAesKey(sharedSecret, salt)
+        val key = deriveAesKey(curve, sharedSecret, salt)
         return encodeOutputPayload(aesGcmDecrypt(key, nonce, encryptedBytes, tag, aadBytes))
     }
 
     override suspend fun sign(message: String, privateKey: String): DigitalSignature {
-        val secret = parsePrivateKey(privateKey)
+        val curve = activeCurve()
+        val math = ECCurveMath(curve)
+        val secret = parsePrivateKey(curve, privateKey)
         val digestBytes = hashMessage(message)
-        val digest = hashToScalar(digestBytes)
-        val nonceGenerator = DeterministicNonceGenerator(secret, digestBytes)
+        val digest = hashToScalar(curve, digestBytes)
+        val nonceGenerator = DeterministicNonceGenerator(curve, secret, digestBytes)
 
         while (true) {
             val k = nonceGenerator.next()
-            val r = multiply(k, BASE_POINT).x.mod(N)
+            val r = math.multiply(k, curve.basePoint.toRuntimePoint()).x.mod(curve.n)
             if (r == BigInteger.ZERO) {
                 nonceGenerator.reject()
                 continue
             }
 
-            val s = k.modInverse(N)
+            val s = k.modInverse(curve.n)
                 .multiply(digest.add(r.multiply(secret)))
-                .mod(N)
+                .mod(curve.n)
             if (s != BigInteger.ZERO) {
-                return DigitalSignature(r = r.toHex(), s = s.toHex())
+                return DigitalSignature(
+                    r = r.toHex(curve.scalarHexWidth()),
+                    s = s.toHex(curve.scalarHexWidth()),
+                )
             }
             nonceGenerator.reject()
         }
@@ -110,36 +129,44 @@ class RealECCryptoService(
         publicKey: String,
         signature: DigitalSignature,
     ): Boolean {
+        val curve = activeCurve()
+        val math = ECCurveMath(curve)
         val q = parsePublicKey(publicKey)
-        requirePointOnCurve(q, "Public key")
+        math.requirePointOnCurve(q, "Public key")
 
         val r = parseHex(signature.r, "Signature r")
         val s = parseHex(signature.s, "Signature s")
-        if (!isScalarInRange(r) || !isScalarInRange(s)) return false
+        if (!isScalarInRange(curve, r) || !isScalarInRange(curve, s)) return false
 
-        val digest = hashToScalar(message)
-        val w = s.modInverse(N)
-        val u1 = digest.multiply(w).mod(N)
-        val u2 = r.multiply(w).mod(N)
-        val point = add(multiply(u1, BASE_POINT), multiply(u2, q))
+        val digest = hashToScalar(curve, message)
+        val w = s.modInverse(curve.n)
+        val u1 = digest.multiply(w).mod(curve.n)
+        val u2 = r.multiply(w).mod(curve.n)
+        val point = math.add(
+            math.multiply(u1, curve.basePoint.toRuntimePoint()),
+            math.multiply(u2, q),
+        )
         if (point.isInfinity) return false
 
-        return point.x.mod(N) == r
+        return point.x.mod(curve.n) == r
     }
 
-    private fun parsePrivateKey(value: String): BigInteger {
+    private suspend fun activeCurve(): ECCurveSpec =
+        activeCurveRepository?.activeCurve() ?: ActiveCurveRegistry.current
+
+    private fun parsePrivateKey(curve: ECCurveSpec, value: String): BigInteger {
         val key = parseHex(value, "Private key")
-        require(isScalarInRange(key)) { "Private key must be in range [1, n - 1]" }
+        require(isScalarInRange(curve, key)) { "Private key must be in range [1, n - 1]" }
         return key
     }
 
-    private fun isScalarInRange(value: BigInteger): Boolean =
-        value >= ONE && value < N
+    private fun isScalarInRange(curve: ECCurveSpec, value: BigInteger): Boolean =
+        value >= ONE && value < curve.n
 
-    private fun parsePublicKey(value: String): CurvePoint {
+    private fun parsePublicKey(value: String): RuntimeCurvePoint {
         val x = readLabeledHex(value, "x") ?: throw IllegalArgumentException("Public key is missing x")
         val y = readLabeledHex(value, "y") ?: throw IllegalArgumentException("Public key is missing y")
-        return CurvePoint(x, y)
+        return RuntimeCurvePoint(x, y)
     }
 
     private fun readLabeledHex(source: String, label: String): BigInteger? {
@@ -162,19 +189,6 @@ class RealECCryptoService(
             "$label must be even-length hex"
         }
         return normalized.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
-    }
-
-    private fun requirePointOnCurve(point: CurvePoint, label: String) {
-        require(!point.isInfinity) { "$label cannot be point at infinity" }
-        require(point.x >= BigInteger.ZERO && point.x < P && point.y >= BigInteger.ZERO && point.y < P) {
-            "$label coordinates must be inside Fp"
-        }
-        val left = point.y.multiply(point.y).mod(P)
-        val right = point.x.modPow(THREE, P)
-            .add(A.multiply(point.x))
-            .add(B)
-            .mod(P)
-        require(left == right) { "$label is not on BrainpoolP512r1" }
     }
 
     private fun decodeInputPayload(value: String): ByteArray {
@@ -201,20 +215,18 @@ class RealECCryptoService(
         }
     }
 
-    private fun hashToScalar(message: String): BigInteger {
-        return hashToScalar(hashMessage(message))
-    }
+    private fun hashToScalar(curve: ECCurveSpec, message: String): BigInteger =
+        hashToScalar(curve, hashMessage(message))
 
     private fun hashMessage(message: String): ByteArray =
         MessageDigest.getInstance("SHA-512").digest(decodeInputPayload(message))
 
-    private fun hashToScalar(digest: ByteArray): BigInteger {
-        return BigInteger(1, digest).mod(N)
-    }
+    private fun hashToScalar(curve: ECCurveSpec, digest: ByteArray): BigInteger =
+        BigInteger(1, digest).mod(curve.n)
 
-    private fun randomScalar(): BigInteger {
+    private fun randomScalar(curve: ECCurveSpec): BigInteger {
         while (true) {
-            val candidate = BigInteger(N.bitLength(), secureRandom).mod(N)
+            val candidate = BigInteger(curve.n.bitLength(), secureRandom).mod(curve.n)
             if (candidate != BigInteger.ZERO) return candidate
         }
     }
@@ -222,12 +234,12 @@ class RealECCryptoService(
     private fun randomBytes(size: Int): ByteArray =
         ByteArray(size).also(secureRandom::nextBytes)
 
-    private fun deriveAesKey(sharedSecret: CurvePoint, salt: ByteArray): ByteArray {
+    private fun deriveAesKey(curve: ECCurveSpec, sharedSecret: RuntimeCurvePoint, salt: ByteArray): ByteArray {
         val inputKeyMaterial = sharedSecret.x.toFixedBytes(FIELD_BYTES) + sharedSecret.y.toFixedBytes(FIELD_BYTES)
         return hkdfSha512(
             inputKeyMaterial = inputKeyMaterial,
             salt = salt,
-            info = HKDF_INFO.toByteArray(StandardCharsets.UTF_8),
+            info = hkdfInfo(curve).toByteArray(StandardCharsets.UTF_8),
             outputLength = AES_KEY_BYTES,
         )
     }
@@ -286,50 +298,8 @@ class RealECCryptoService(
         return cipher.doFinal(cipherText + tag)
     }
 
-    private fun add(left: CurvePoint, right: CurvePoint): CurvePoint {
-        if (left.isInfinity) return right
-        if (right.isInfinity) return left
-
-        if (left.x == right.x) {
-            if (left.y.add(right.y).mod(P) == BigInteger.ZERO) return CurvePoint.INFINITY
-            return double(left)
-        }
-
-        val lambda = right.y.subtract(left.y)
-            .multiply(right.x.subtract(left.x).mod(P).modInverse(P))
-            .mod(P)
-        val x3 = lambda.multiply(lambda).subtract(left.x).subtract(right.x).mod(P)
-        val y3 = lambda.multiply(left.x.subtract(x3)).subtract(left.y).mod(P)
-        return CurvePoint(x3, y3)
-    }
-
-    private fun double(point: CurvePoint): CurvePoint {
-        if (point.isInfinity || point.y == BigInteger.ZERO) return CurvePoint.INFINITY
-
-        val numerator = THREE.multiply(point.x.multiply(point.x)).add(A).mod(P)
-        val denominator = TWO.multiply(point.y).mod(P).modInverse(P)
-        val lambda = numerator.multiply(denominator).mod(P)
-        val x3 = lambda.multiply(lambda).subtract(TWO.multiply(point.x)).mod(P)
-        val y3 = lambda.multiply(point.x.subtract(x3)).subtract(point.y).mod(P)
-        return CurvePoint(x3, y3)
-    }
-
-    private fun multiply(scalar: BigInteger, point: CurvePoint): CurvePoint {
-        var k = scalar.mod(N)
-        var addend = point
-        var result = CurvePoint.INFINITY
-
-        while (k.signum() > 0) {
-            if (k.testBit(0)) result = add(result, addend)
-            addend = double(addend)
-            k = k.shiftRight(1)
-        }
-
-        return result
-    }
-
-    private fun CurvePoint.toDomainPoint(): ECPoint =
-        ECPoint(x = x.toHex(), y = y.toHex(), isInfinity = isInfinity)
+    private fun RuntimeCurvePoint.toDomainPoint(curve: ECCurveSpec): ECPoint =
+        ECPoint(x = x.toHex(curve.fieldHexWidth()), y = y.toHex(curve.fieldHexWidth()), isInfinity = isInfinity)
 
     private fun BigInteger.toFixedBytes(size: Int): ByteArray {
         val raw = toByteArray()
@@ -341,7 +311,18 @@ class RealECCryptoService(
     private fun ByteArray.toHexString(): String =
         "0x" + joinToString("") { "%02X".format(it) }
 
+    private fun com.project.cryptoapp.domain.crypto.CurvePointSpec.toRuntimePoint(): RuntimeCurvePoint =
+        RuntimeCurvePoint(x, y)
+
+    private fun ECCurveSpec.fieldHexWidth(): Int = fieldSize / 4
+
+    private fun ECCurveSpec.scalarHexWidth(): Int = maxOf(fieldHexWidth(), n.bitLength().let { (it + 3) / 4 })
+
+    private fun hkdfInfo(curve: ECCurveSpec): String =
+        "CryptoApp|${curve.id}|${curve.fingerprint}|$ALGORITHM|v1"
+
     private inner class DeterministicNonceGenerator(
+        private val curve: ECCurveSpec,
         private val privateKey: BigInteger,
         messageDigest: ByteArray,
     ) {
@@ -364,7 +345,7 @@ class RealECCryptoService(
                     t += v
                 }
                 val candidate = bitsToInt(t)
-                if (isScalarInRange(candidate)) return candidate
+                if (isScalarInRange(curve, candidate)) return candidate
 
                 k = hmac(k, v + byteArrayOf(0x00))
                 v = hmac(k, v)
@@ -377,11 +358,11 @@ class RealECCryptoService(
         }
 
         private fun bitsToOctets(bytes: ByteArray): ByteArray =
-            bitsToInt(bytes).mod(N).toFixedBytes(SCALAR_BYTES)
+            bitsToInt(bytes).mod(curve.n).toFixedBytes(SCALAR_BYTES)
 
         private fun bitsToInt(bytes: ByteArray): BigInteger {
             val value = BigInteger(1, bytes)
-            val extraBits = bytes.size * Byte.SIZE_BITS - N.bitLength()
+            val extraBits = bytes.size * Byte.SIZE_BITS - curve.n.bitLength()
             return if (extraBits > 0) value.shiftRight(extraBits) else value
         }
 
@@ -397,29 +378,10 @@ class RealECCryptoService(
         val tag: ByteArray,
     )
 
-    private data class CurvePoint(
-        val x: BigInteger,
-        val y: BigInteger,
-        val isInfinity: Boolean = false,
-    ) {
-        companion object {
-            val INFINITY = CurvePoint(BigInteger.ZERO, BigInteger.ZERO, isInfinity = true)
-        }
-    }
-
     private companion object {
-        val P: BigInteger = BrainpoolP512r1.p
-        val A: BigInteger = BrainpoolP512r1.a
-        val B: BigInteger = BrainpoolP512r1.b
-        val N: BigInteger = BrainpoolP512r1.n
-        val BASE_POINT = CurvePoint(BrainpoolP512r1.gx, BrainpoolP512r1.gy)
         val ONE: BigInteger = BigInteger.ONE
-        val TWO: BigInteger = BigInteger.valueOf(2)
-        val THREE: BigInteger = BigInteger.valueOf(3)
         const val HEX_DIGITS = "0123456789abcdefABCDEF"
-        const val CURVE_NAME = "BrainpoolP512r1"
         const val ALGORITHM = "ECDH-HKDF-SHA512-AES-256-GCM"
-        const val HKDF_INFO = "CryptoApp|BrainpoolP512r1|ECDH-HKDF-SHA512-AES-256-GCM|v1"
         const val HMAC_SHA512 = "HmacSHA512"
         const val AES_GCM_TRANSFORMATION = "AES/GCM/NoPadding"
         const val AES = "AES"

@@ -12,4 +12,5 @@ data class CryptoHistoryEntity(
     val outputText: String,
     val status: String,
     val timestamp: Long,
+    val durationNanos: Long? = null,
 )

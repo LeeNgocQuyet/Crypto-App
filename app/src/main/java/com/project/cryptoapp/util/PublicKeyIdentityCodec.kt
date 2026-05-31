@@ -1,12 +1,13 @@
 package com.project.cryptoapp.util
 
+import com.project.cryptoapp.domain.crypto.ActiveCurveRegistry
 import com.project.cryptoapp.domain.model.DigitalSignature
 import com.project.cryptoapp.domain.model.ECPoint
 
 data class PublicKeyIdentityProof(
     val version: Int = 1,
     val type: String = "public-key-identity-proof",
-    val curve: String = "BrainpoolP512r1",
+    val curve: String = ActiveCurveRegistry.current.id,
     val label: String,
     val publicKey: ECPoint,
     val fingerprint: String,
@@ -15,7 +16,7 @@ data class PublicKeyIdentityProof(
 
 object PublicKeyIdentityCodec {
     fun messageToSign(label: String, fingerprint: String): String =
-        "CryptoApp public key identity|BrainpoolP512r1|${label.trim()}|${fingerprint.uppercase()}"
+        "CryptoApp public key identity|${ActiveCurveRegistry.current.id}|${label.trim()}|${fingerprint.uppercase()}"
 
     fun encode(proof: PublicKeyIdentityProof): String =
         """

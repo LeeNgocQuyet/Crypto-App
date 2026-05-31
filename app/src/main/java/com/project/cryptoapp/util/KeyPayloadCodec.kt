@@ -1,12 +1,13 @@
 package com.project.cryptoapp.util
 
+import com.project.cryptoapp.domain.crypto.ActiveCurveRegistry
 import com.project.cryptoapp.domain.model.ECPoint
 import java.security.MessageDigest
 
 data class KeyPayload(
     val version: Int = 1,
     val type: String,
-    val curve: String = "BrainpoolP512r1",
+    val curve: String = ActiveCurveRegistry.current.id,
     val publicKey: ECPoint,
     val privateKey: String? = null,
     val fingerprint: String,
@@ -17,6 +18,7 @@ object KeyPayloadCodec {
         val point = parsePoint(publicKey)
         return KeyPayload(
             type = "public",
+            curve = ActiveCurveRegistry.current.id,
             publicKey = point,
             fingerprint = fingerprint(point),
         )
@@ -26,6 +28,7 @@ object KeyPayloadCodec {
         val point = parsePoint(publicKey)
         return KeyPayload(
             type = "private",
+            curve = ActiveCurveRegistry.current.id,
             publicKey = point,
             privateKey = privateKey,
             fingerprint = fingerprint(point),
